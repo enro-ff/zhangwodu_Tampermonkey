@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         智慧树掌握度-最小链路(自动续跑-狂点轰炸版)
 // @namespace    https://github.com/local/zhihuishu-min-chain
-// @version      1.5.0
-// @description  DOM 探测屏状态，任意界面可续跑；答题+提交合一。采用“轮询点击直到元素消失”的强力驱动策略。
+// @version      1.5.1
+// @description  DOM 探测屏状态，任意界面可续跑；答题+提交合一。仅菜单点击后执行，不自动启动。
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://smartcoursestudent.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
@@ -457,8 +457,4 @@
 
   GM_registerMenuCommand('最小链路：开始/继续', startChain);
   GM_registerMenuCommand('最小链路：停止', stopChain);
-
-  waitFor(() => (detectScreen() !== SCREENS.UNKNOWN ? true : null), 15000).then(() => {
-    if (isLoopOn() && !unsafeWindow.__ZHS_STOP) runFromHere();
-  });
 })();
