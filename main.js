@@ -250,13 +250,17 @@
       if (/^(SCRIPT|STYLE)$/i.test(node.tagName)) return;
       if (node.classList?.contains('upload')) return;
       if (node.tagName === 'IMG') {
-        imgIndex += 1;
-        blocks.push({
-          type: 'image',
-          index: imgIndex,
-          src: node.src || '',
-          alt: node.alt || '',
-        });
+        const w = node.naturalWidth || node.width || 0;
+        const h = node.naturalHeight || node.height || 0;
+        if (w > 10 && h > 10) {
+          imgIndex += 1;
+          blocks.push({
+            type: 'image',
+            index: imgIndex,
+            src: node.src || '',
+            alt: node.alt || '',
+          });
+        }
         return;
       }
       if (node.tagName === 'BR') {
