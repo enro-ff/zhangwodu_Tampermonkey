@@ -140,8 +140,8 @@
     const blocks = getQuestionBlocks(root);
     unsafeWindow.__questionBlocks = blocks;
     const md = blocksToMarkdown(blocks);
-    if (md) console.log(md);
-    blocks.filter((b) => b.type === 'image').forEach((b) => console.log(b.src));
+    // if (md) console.log(md);
+    // blocks.filter((b) => b.type === 'image').forEach((b) => console.log(b.src));
     return blocks;
   };
 
@@ -153,17 +153,20 @@
     const content = [
       {
         type: 'text',
-        text: `根据题目选择正确答案，只输出一个字母（如 A）。\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`,
+        text: `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，x只能为一个字母，即正确的选项。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`,
       },
     ];
     blocks
       .filter((b) => b.type === 'image')
       .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
+    // console.log('user:' ,content.toString());
 
     const raw = await callAI(content);
-    const letter = raw.toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
+    const match = raw.match(/答案：([A-Z])/i);
+    debugger;
+    const letter = match ? match[1].toUpperCase() : '';
     const idx = letter.charCodeAt(0) - 65;
-    console.log('AI:', letter);
+    // console.log('AI:', raw);
 
     const targetOpt = opts[idx];
     if (targetOpt) {
@@ -175,10 +178,10 @@
     }
   };
 
-  // 获取当前需要点击的“不匹配树节点”
+  // 获取当前未答题目
   const getMismatchNode = () => {
     const list = [...document.querySelectorAll('.custom-tree-answer-normal.no-answer')];
-    const sortChar = (document.querySelector('.letterSortNum')?.innerText || '').trim().charAt(0);
+    const sortChar = (document.querySelector('.letterSortNum')?.innerText || '').trim().charAt(0);//当前题号，避免打完没有更新
     if (list.length >= 2) {
       for (let i = 1; i < list.length; i++) {
         const c1 = (list[i].innerText || '').trim().charAt(0);
@@ -189,7 +192,7 @@
   };
 
   async function runEntry() {
-    // 1. 狂点进度未满 80% 的仪表盘，直到该目标在页面上消失
+    // 1. 点击掌握度不足80%的题目，直到该目标在页面上消失
     await clickUntilGone(() => {
       const progresses = document.querySelectorAll('.el-progress--dashboard');
       for (const el of progresses) {
@@ -198,8 +201,7 @@
       }
       return null;
     });
-
-    // 2. 狂点“掌握度行动”按钮，直到它消失
+    // 2.进入题目，点击去提升
     await clickUntilGone('.simplified-mastery__action');
 
     setState(STEPS.QUIZ);
@@ -225,7 +227,7 @@
 
       await answerWithAI(blocks);
 
-      // 核心重构：轮询点击不匹配的卡片节点，直到【找不到不匹配节点】或者【题目文本发生变化】
+      // 核心重构：轮询点击未完成的题目
       const hasMismatch = getMismatchNode();
       if (hasMismatch) {
         await clickUntilGone(() => {
@@ -246,9 +248,9 @@
   }
 
   async function runExitBackOnly() {
-    // 狂点返回图标直到它消失
+    // 成绩页面退出按钮
     await clickUntilGone('.backup-icon');
-    // 狂点关闭（叉叉）按钮直到它消失
+    // 退回选择知识点，书掌握度页面
     await clickUntilGone('[class*="w-[32px]"][class*="h-[32px]"].cursor-pointer');
   }
 
@@ -285,7 +287,7 @@
 
   async function runExit() {
     // 狂点“完成查看”按钮直到它消失
-    await clickUntilGone('.reviewDone.ZHIHUISHU_QZMD');
+    await clickUntilGone('.reviewDone.ZHIHUISHU_QZMD');//提交作业按钮
     await runExitBackOnly();
     setState(STEPS.IDLE);
     await continueLoopIfEnabled();
