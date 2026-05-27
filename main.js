@@ -874,4 +874,8 @@
     }
   }, 2000);
   window.addEventListener('beforeunload', () => clearInterval(idleRefreshTimer));
+
+  waitFor(() => (detectScreen() !== SCREENS.UNKNOWN ? true : null), 15000).then(() => {
+    if (isLoopOn() && !unsafeWindow.__ZHS_STOP) runFromHere();
+  });
 })();
