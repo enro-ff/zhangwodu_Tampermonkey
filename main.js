@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         智慧树掌握度-最小链路(自动续跑-狂点轰炸版)
 // @namespace    https://github.com/local/zhihuishu-min-chain
-// @version      1.3.0
-// @description  入口→答题(AI)→提交返回；刷新后自动续跑。采用“轮询点击直到元素消失”的强力驱动策略。
+// @version      1.5.0
+// @description  DOM 探测屏状态，任意界面可续跑；答题+提交合一。采用“轮询点击直到元素消失”的强力驱动策略。
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://smartcoursestudent.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
@@ -18,9 +18,19 @@
 (function () {
   'use strict';
 
-  const STATE_KEY = 'zhs_chain_state';
   const LOOP_KEY = 'zhs_loop';
-  const STEPS = { IDLE: 'idle', QUIZ: 'quiz', EXIT: 'exit' };
+  const MAX_HOPS = 500;
+  const ROUTE_SETTLE_MS = 200;
+  const NAV_BACK_SEL = '[class*="w-[32px]"][class*="h-[32px]"].cursor-pointer';
+
+  const SCREENS = {
+    LIST: 'LIST',
+    DETAIL: 'DETAIL',
+    PRE_QUIZ: 'PRE_QUIZ',
+    QUIZ: 'QUIZ',
+    RESULT: 'RESULT',
+    UNKNOWN: 'UNKNOWN',
+  };
 
   // OpenAI 兼容 API 配置
   const API_CFG = {
@@ -30,8 +40,38 @@
   };
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const getState = () => GM_getValue(STATE_KEY, { step: STEPS.IDLE });
-  const setState = (step) => GM_setValue(STATE_KEY, { step, at: Date.now() });
+  const isLoopOn = () => GM_getValue(LOOP_KEY, false);
+
+  const parsePct = (el) => parseInt((el?.innerText || '').replace(/\D/g, ''), 10);
+
+  const findLowPctProgress = () => {
+    for (const el of document.querySelectorAll('.el-progress--dashboard')) {
+      const pct = parsePct(el);
+      if (!Number.isNaN(pct) && pct < 80) return el;
+    }
+    return null;
+  };
+
+  const hasListWork = () => !!findLowPctProgress();
+
+  /** 按流程从后往前探测当前屏（SPA 路由不刷新） */
+  const detectScreen = () => {
+    // RESULT · 成绩页：有正确率/得分图表（PRE_QUIZ 也有 backup-icon，不能用它判断）
+    if (document.querySelector('.charts-rate')) return SCREENS.RESULT;
+    // QUIZ · 提交子阶段：「完成查看 / 提交作业」按钮
+    if (document.querySelector('.reviewDone.ZHIHUISHU_QZMD')) return SCREENS.QUIZ;
+    // QUIZ · 答题子阶段：题干已渲染
+    const q = document.querySelector('.questionContent');
+    if (q?.innerText?.trim()) return SCREENS.QUIZ;
+    // PRE_QUIZ · 提升入口页：「提升 / 开始」按钮
+    if (document.querySelector('.improve-btn')) return SCREENS.PRE_QUIZ;
+    // DETAIL · 知识点详情：「去提升」（也可能是 RESULT 退出链的落点，需结合 expectDetailForward）
+    if (document.querySelector('.simplified-mastery__action')) return SCREENS.DETAIL;
+    // LIST · 掌握度列表：环形进度条
+    const dash = document.querySelector('.el-progress--dashboard');
+    if (dash && /\d+/.test(dash.innerText || '')) return SCREENS.LIST;
+    return SCREENS.UNKNOWN;
+  };
 
   const AI_CHAT = {
     maxAttempts: 3,
@@ -279,124 +319,127 @@
     return null;
   };
 
-  async function runEntry() {
-    // 1. 点击掌握度不足80%的题目，直到该目标在页面上消失
-    await clickUntilGone(() => {
-      const progresses = document.querySelectorAll('.el-progress--dashboard');
-      for (const el of progresses) {
-        const pct = parseInt(el.innerText.replace(/\D/g, ''), 10);
-        if (!Number.isNaN(pct) && pct < 80) return el;
-      }
-      return null;
-    });
-    // 2.进入题目，点击去提升
-    await clickUntilGone('.simplified-mastery__action');
+  async function runListHop() {
+    if (!isLoopOn()) return false;
 
-    setState(STEPS.QUIZ);
-
-    // 3. 狂点“提升/开始”按钮，直到它消失
-    await clickUntilGone('.improve-btn');
-  }
-
-  async function runQuiz() {
-    for (let i = 0; i < 50; i++) {
-      if (unsafeWindow.__ZHS_STOP) break;
-
-      // 答题前，确保题目容器和选项文本被 JS 异步渲染出来
-      const isReady = await waitFor(() => {
-        const q = document.querySelector('.questionContent');
-        const opts = document.querySelectorAll('ul.radio-view li');
-        return q && q.innerText.trim() && opts.length > 0 && opts[0].innerText.trim() ? q : null;
-      });
-      if (!isReady) return;
-
-      const oldText = isReady.innerText; // 备份当前题目的文本用于防错比对
-      const blocks = readQuestion();
-
-      await answerWithAI(blocks);
-
-      // 核心重构：轮询点击未完成的题目
-      const hasMismatch = getMismatchNode();
-      if (hasMismatch) {
-        await clickUntilGone(() => {
-          const currentQ = document.querySelector('.questionContent');
-          // 如果题目文本已经变了，说明已经成功切到下一题，立即停止轰炸
-          if (!currentQ || currentQ.innerText !== oldText) return null;
-          return getMismatchNode();
-        });
-        continue; // 继续下一轮答题
-      } else {
-        // 如果已经没有不匹配的项了，说明全部完成，准备退出
-        setState(STEPS.EXIT);
-        break;
-      }
-    }
-
-    if (getState().step === STEPS.EXIT) await runExit();
-  }
-
-  async function runExitBackOnly() {
-    // 成绩页面退出按钮
-    await clickUntilGone('.backup-icon');
-    // 退回选择知识点，书掌握度页面
-    await clickUntilGone('[class*="w-[32px]"][class*="h-[32px]"].cursor-pointer');
-  }
-
-  async function continueLoopIfEnabled() {
-    if (!GM_getValue(LOOP_KEY, false) || unsafeWindow.__ZHS_STOP) return;
-    await tryContinueLoop();
-  }
-
-  async function tryContinueLoop() {
-    if (!GM_getValue(LOOP_KEY, false) || unsafeWindow.__ZHS_STOP) return;
-
-    // 等待面板重新加载并带有数据
+    // 等待掌握度列表面板重新加载并带有百分比数字
     const hasDashboard = await waitFor(() => {
       const el = document.querySelector('.el-progress--dashboard');
-      return el && /\d+/.test(el.innerText);
+      return el && /\d+/.test(el.innerText || '') ? el : null;
     }, 30000);
-    if (!hasDashboard) return;
+    if (!hasDashboard) return false;
 
-    let hasWork = false;
-    for (const el of document.querySelectorAll('.el-progress--dashboard')) {
-      const pct = parseInt(el.innerText.replace(/\D/g, ''), 10);
-      if (!Number.isNaN(pct) && pct < 80) {
-        hasWork = true;
-        break;
-      }
-    }
-    if (!hasWork) {
+    if (!hasListWork()) {
       GM_setValue(LOOP_KEY, false);
-      return;
+      return false;
     }
 
-    await runEntry();
+    // 点击掌握度不足 80% 的题目，直到该目标在页面上消失
+    return clickUntilGone(() => findLowPctProgress());
   }
 
-  async function runExit() {
-    // 狂点“完成查看”按钮直到它消失
-    await clickUntilGone('.reviewDone.ZHIHUISHU_QZMD');//提交作业按钮
-    await runExitBackOnly();
-    setState(STEPS.IDLE);
-    await continueLoopIfEnabled();
+  async function runDetailHop() {
+    // 从 LIST 点进 DETAIL 后：进入题目，点击「去提升」
+    return clickUntilGone('.simplified-mastery__action');
   }
 
-  async function runByState() {
+  async function runDetailExitHop() {
+    // DETAIL 退回 LIST：脚本首次进入、或 RESULT 退出链落点（小箭头实际路由仍到 DETAIL 的上一级）
+    return clickUntilGone(NAV_BACK_SEL);
+  }
+
+  async function runPreQuizHop() {
+    // 狂点「提升 / 开始」按钮，直到它消失
+    return clickUntilGone('.improve-btn');
+  }
+
+  /** QUIZ = 答题 + 提交（同一屏）；是否提交由 getMismatchNode 判断，不用 reviewDone 是否存在 */
+  async function runQuizHop() {
+    // 确保题目容器和选项文本被 JS 异步渲染出来
+    const isReady = await waitFor(() => {
+      const q = document.querySelector('.questionContent');
+      const opts = document.querySelectorAll('ul.radio-view li');
+      return q && q.innerText.trim() && opts.length > 0 && opts[0].innerText.trim() ? q : null;
+    }, 30000);
+    if (!isReady) return false;
+
+    const oldText = isReady.innerText; // 备份当前题目文本，用于防错比对
+    try {
+      await answerWithAI(readQuestion());
+    } catch {
+      return false;
+    }
+
+    // 侧栏还有未答题 → 切下一题（不能提交）
+    if (getMismatchNode()) {
+      return clickUntilGone(() => {
+        const currentQ = document.querySelector('.questionContent');
+        if (!currentQ || currentQ.innerText !== oldText) return null;
+        return getMismatchNode();
+      });
+    }
+
+    // 侧栏无未答题 → 提交（reviewDone 可能一直存在，仅作点击目标）
+    return clickUntilGone('.reviewDone.ZHIHUISHU_QZMD');
+  }
+
+  async function runResultHop() {
+    // RESULT · 成绩页：先点 backup-icon，再点小箭头（后者实际落到 DETAIL 而非 LIST）
+    if (!document.querySelector('.charts-rate')) return false;
+    const ok1 = await clickUntilGone('.backup-icon');
+    if (!ok1) return false;
+    await sleep(ROUTE_SETTLE_MS);
+    return clickUntilGone(NAV_BACK_SEL);
+  }
+
+  async function runOneHop(screen, expectDetailForward) {
+    switch (screen) {
+      case SCREENS.LIST:
+        return runListHop();
+      case SCREENS.DETAIL:
+        return expectDetailForward ? runDetailHop() : runDetailExitHop();
+      case SCREENS.PRE_QUIZ:
+        return runPreQuizHop();
+      case SCREENS.QUIZ:
+        return runQuizHop();
+      case SCREENS.RESULT:
+        return runResultHop();
+      default:
+        return false;
+    }
+  }
+
+  async function runFromHere() {
     if (unsafeWindow.__ZHS_CHAIN_RUNNING) return;
     unsafeWindow.__ZHS_CHAIN_RUNNING = true;
     try {
-      const { step } = getState();
-      if (step === STEPS.QUIZ) {
-        await runQuiz();
-        return;
-      }
-      if (step === STEPS.EXIT) {
-        await runExit();
-        return;
-      }
+      let hops = 0;
+      // false = DETAIL 上应点返回（首次进入 / RESULT 退出链落点）；true = 从 LIST 点进，应点「去提升」
+      let expectDetailForward = false;
 
-      if (step === STEPS.IDLE && GM_getValue(LOOP_KEY, false)) {
-        await tryContinueLoop();
+      while (hops < MAX_HOPS && isLoopOn() && !unsafeWindow.__ZHS_STOP) {
+        hops += 1;
+
+        let screen = detectScreen();
+        if (screen === SCREENS.UNKNOWN) {
+          const found = await waitFor(() => (detectScreen() !== SCREENS.UNKNOWN ? true : null), 15000);
+          if (!found) break;
+          screen = detectScreen();
+          if (screen === SCREENS.UNKNOWN) break;
+        }
+
+        const progressed = await runOneHop(screen, expectDetailForward);
+        if (!progressed) break;
+
+        if (screen === SCREENS.LIST && progressed) expectDetailForward = true;
+        if (screen === SCREENS.DETAIL && expectDetailForward && progressed) expectDetailForward = false;
+
+        await sleep(ROUTE_SETTLE_MS);
+
+        if (detectScreen() === SCREENS.LIST && !hasListWork()) {
+          GM_setValue(LOOP_KEY, false);
+          break;
+        }
       }
     } finally {
       unsafeWindow.__ZHS_CHAIN_RUNNING = false;
@@ -406,38 +449,18 @@
   function startChain() {
     unsafeWindow.__ZHS_STOP = false;
     GM_setValue(LOOP_KEY, true);
-    runEntry();
-  }
-
-  function startFromExitAndLoop() {
-    unsafeWindow.__ZHS_STOP = false;
-    GM_setValue(LOOP_KEY, true);
-    setState(STEPS.IDLE);
-    runExitBackOnly().then(() => continueLoopIfEnabled());
-  }
-
-  function continueQuizOnPage() {
-    unsafeWindow.__ZHS_STOP = false;
-    GM_setValue(LOOP_KEY, true);
-    setState(STEPS.QUIZ);
-    runQuiz();
+    runFromHere();
   }
 
   function stopChain() {
     unsafeWindow.__ZHS_STOP = true;
     GM_setValue(LOOP_KEY, false);
-    setState(STEPS.IDLE);
   }
 
-  GM_registerMenuCommand('最小链路：开始', startChain);
-  GM_registerMenuCommand('最小链路：题目中继续循环', continueQuizOnPage);
-  GM_registerMenuCommand('最小链路：从答题完成退出并循环', startFromExitAndLoop);
-  GM_registerMenuCommand('最小链路：停止并重置', stopChain);
+  GM_registerMenuCommand('最小链路：开始/继续', startChain);
+  GM_registerMenuCommand('最小链路：停止', stopChain);
 
-  // 动态感知破冰启动：一有数据节点满足，立刻唤醒
-  waitFor(() => {
-    const dashboard = document.querySelector('.el-progress--dashboard');
-    const quiz = document.querySelector('.questionContent');
-    return (dashboard && /\d+/.test(dashboard.innerText)) || (quiz && quiz.innerText.trim());
-  }, 15000).then(runByState);
+  waitFor(() => (detectScreen() !== SCREENS.UNKNOWN ? true : null), 15000).then(() => {
+    if (isLoopOn() && !unsafeWindow.__ZHS_STOP) runFromHere();
+  });
 })();
