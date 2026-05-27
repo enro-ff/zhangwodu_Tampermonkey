@@ -111,9 +111,10 @@
   };
 
   const isValidQuizAnswer = (raw, optionCount) => {
-    const match = (raw || '').match(/答案[：:]\s*([A-Z]+)/i);
-    if (!match) return false;
-    const letters = match[1].toUpperCase();
+    const all = [...(raw || '').matchAll(/答案[：:]\s*([A-Z]+)/ig)];
+    const last = all[all.length - 1];
+    if (!last) return false;
+    const letters = last[1].toUpperCase();
     return [...letters].every(l => {
       const idx = l.charCodeAt(0) - 65;
       return idx >= 0 && idx < optionCount;
@@ -331,8 +332,9 @@
   };
 
   const parseAnswerLetters = (raw) => {
-    const match = (raw || '').match(/答案[：:]\s*([A-Z]+)/i);
-    return match ? [...match[1].toUpperCase()] : [];
+    const all = [...(raw || '').matchAll(/答案[：:]\s*([A-Z]+)/ig)];
+    const last = all[all.length - 1];
+    return last ? [...last[1].toUpperCase()] : [];
   };
 
   const answerWithAI = async (blocks) => {
