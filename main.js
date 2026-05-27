@@ -33,6 +33,111 @@
   const getState = () => GM_getValue(STATE_KEY, { step: STEPS.IDLE });
   const setState = (step) => GM_setValue(STATE_KEY, { step, at: Date.now() });
 
+  const AI_CHAT = {
+    maxAttempts: 3,
+    timeoutMs: 45000,
+    retryDelayMs: 1500,
+  };
+
+  const AI_STATUS = {
+    IDLE: 'idle',
+    REQUESTING: 'requesting',
+    RETRYING: 'retrying',
+    SUCCESS: 'success',
+    FAILED: 'failed',
+  };
+
+  const createAIChatState = () => ({
+    status: AI_STATUS.IDLE,
+    attempt: 0,
+    lastRaw: '',
+    lastError: null,
+  });
+
+  const parseAnswerLetter = (raw) => {
+    const match = (raw || '').match(/答案[：:]\s*([A-Z])/i);
+    return match ? match[1].toUpperCase() : null;
+  };
+
+  const isValidQuizAnswer = (raw, optionCount) => {
+    const letter = parseAnswerLetter(raw);
+    if (!letter) return false;
+    const idx = letter.charCodeAt(0) - 65;
+    return idx >= 0 && idx < optionCount;
+  };
+
+  const callAIOnce = (messages) =>
+    new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${API_CFG.baseUrl.replace(/\/$/, '')}/chat/completions`,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${API_CFG.apiKey}`,
+        },
+        data: JSON.stringify({
+          model: API_CFG.model,
+          messages,
+          temperature: 0.2,
+        }),
+        timeout: AI_CHAT.timeoutMs,
+        onload: (res) => {
+          if (res.status < 200 || res.status >= 300) {
+            reject(new Error(`AI HTTP ${res.status}`));
+            return;
+          }
+          try {
+            const data = JSON.parse(res.responseText);
+            const text = data?.choices?.[0]?.message?.content;
+            resolve(text.trim());
+          } catch (e) {
+            reject(new Error(`AI 响应解析失败: ${e.message}`));
+          }
+        },
+        onerror: () => reject(new Error('AI 网络错误')),
+        ontimeout: () => reject(new Error('AI 请求超时')),
+      });
+    });
+
+  /**
+   * 统一 AI 对话：超时/网络错误自动重试；validate 不通过时带纠错提示重试
+   * @param {(attempt: number, state: object) => Array} buildMessages
+   * @param {(raw: string) => boolean} validate
+   */
+  const requestAI = async (buildMessages, validate) => {
+    const chatState = createAIChatState();
+
+    for (let attempt = 1; attempt <= AI_CHAT.maxAttempts; attempt++) {
+      chatState.attempt = attempt;
+      chatState.status = attempt === 1 ? AI_STATUS.REQUESTING : AI_STATUS.RETRYING;
+
+      try {
+        const messages = buildMessages(attempt, chatState);
+        const raw = await callAIOnce(messages);
+        chatState.lastRaw = raw;
+
+        if (validate(raw)) {
+          chatState.status = AI_STATUS.SUCCESS;
+          return { raw, state: chatState };
+        }
+
+        chatState.lastError = '答案格式不合规';
+      } catch (e) {
+        chatState.lastError = e.message || String(e);
+      }
+
+      if (attempt < AI_CHAT.maxAttempts) {
+        await sleep(AI_CHAT.retryDelayMs);
+      }
+    }
+
+    chatState.status = AI_STATUS.FAILED;
+    if (chatState.lastError === '答案格式不合规') {
+      throw new Error(`AI 答案不合规，已重试 ${AI_CHAT.maxAttempts} 次: ${chatState.lastRaw}`);
+    }
+    throw new Error(`AI 请求失败，已重试 ${AI_CHAT.maxAttempts} 次: ${chatState.lastError}`);
+  };
+
   const click = (el) => {
     if (!el) return;
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: unsafeWindow }));
@@ -68,27 +173,6 @@
     }
     return null;
   };
-
-  const callAI = (content) =>
-    new Promise((resolve) => {
-      GM_xmlhttpRequest({
-        method: 'POST',
-        url: `${API_CFG.baseUrl.replace(/\/$/, '')}/chat/completions`,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${API_CFG.apiKey}`,
-        },
-        data: JSON.stringify({
-          model: API_CFG.model,
-          messages: [{ role: 'user', content }],
-          temperature: 0.2,
-        }),
-        onload: (res) => {
-          const data = JSON.parse(res.responseText);
-          resolve(data.choices[0].message.content.trim());
-        },
-      });
-    });
 
   const getQuestionBlocks = (root) => {
     if (!root) return [];
@@ -145,33 +229,37 @@
     return blocks;
   };
 
+  const buildQuizMessages = (blocks, optLines, attempt, chatState) => {
+    let prompt = `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，X 只能为单个字母（对应正确选项）。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
+
+    if (attempt > 1 && chatState.lastRaw) {
+      prompt += `\n\n【重试】你上次回答不合规（需以“答案：X”结尾且 X 为有效选项字母）。请重新作答。上次回答：\n${chatState.lastRaw}`;
+    } else if (attempt > 1 && chatState.lastError) {
+      prompt = `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，X 只能为单个字母（对应正确选项）。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
+    }
+
+    const content = [{ type: 'text', text: prompt }];
+    blocks
+      .filter((b) => b.type === 'image')
+      .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
+    return [{ role: 'user', content }];
+  };
+
   const answerWithAI = async (blocks) => {
     const opts = [...document.querySelectorAll('ul.radio-view li')];
     if (!opts.length) return;
 
     const optLines = opts.map((li, i) => `${String.fromCharCode(65 + i)}. ${li.innerText.trim()}`);
-    const content = [
-      {
-        type: 'text',
-        text: `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，x只能为一个字母，即正确的选项。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`,
-      },
-    ];
-    blocks
-      .filter((b) => b.type === 'image')
-      .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
-    // console.log('user:' ,content.toString());
+    const { raw } = await requestAI(
+      (attempt, chatState) => buildQuizMessages(blocks, optLines, attempt, chatState),
+      (raw) => isValidQuizAnswer(raw, opts.length),
+    );
 
-    const raw = await callAI(content);
-    const match = raw.match(/答案：([A-Z])/i);
-    debugger;
-    const letter = match ? match[1].toUpperCase() : '';
+    const letter = parseAnswerLetter(raw);
     const idx = letter.charCodeAt(0) - 65;
-    // console.log('AI:', raw);
-
     const targetOpt = opts[idx];
     if (targetOpt) {
       const oldClass = targetOpt.className;
-      // 选项本身不会消失，但我们可以狂点它，直到它的类名（样式）发生改变，意味着框架成功接收了点击
       await clickUntilGone(() => {
         return targetOpt.className === oldClass ? targetOpt : null;
       }, 3000, 100);
