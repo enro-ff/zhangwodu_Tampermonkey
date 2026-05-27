@@ -99,10 +99,13 @@
   };
 
   const isValidQuizAnswer = (raw, optionCount) => {
-    const letter = parseAnswerLetter(raw);
-    if (!letter) return false;
-    const idx = letter.charCodeAt(0) - 65;
-    return idx >= 0 && idx < optionCount;
+    const match = (raw || '').match(/答案[：:]\s*([A-Z]+)/i);
+    if (!match) return false;
+    const letters = match[1].toUpperCase();
+    return [...letters].every(l => {
+      const idx = l.charCodeAt(0) - 65;
+      return idx >= 0 && idx < optionCount;
+    });
   };
 
   const parseApiError = (res) => {
@@ -286,14 +289,18 @@
     return blocks;
   };
 
-  const buildQuizMessages = (blocks, optLines, attempt, chatState) => {
-    let prompt = `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，X 只能为单个字母（对应正确选项）。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
+  const buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false) => {
+    const answerFmt = isMultiple
+      ? '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）'
+      : '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）';
+    let prompt = `请逐步用平文本思考并选出正确答案的选项。${answerFmt}。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
 
     if (attempt > 1 && chatState.lastRaw) {
-      prompt += `\n\n【重试】你上次回答不合规（需以“答案：X”结尾且 X 为有效选项字母）。请重新作答。上次回答：\n${chatState.lastRaw}`;
+      prompt += `\n\n【重试】你上次回答不合规（需以"答案：X"结尾且 X 为有效选项字母）。请重新作答。上次回答：\n${chatState.lastRaw}`;
     } else if (attempt > 1 && chatState.lastError) {
-      prompt = `请逐步用平文本思考并选出正确答案的选项。最后一行必须以“答案：X”的格式输出，X 只能为单个字母（对应正确选项）。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
+      prompt = `请逐步用平文本思考并选出正确答案的选项。${answerFmt}。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
     }
+
 
     const content = [{ type: 'text', text: prompt }];
     blocks
@@ -302,24 +309,47 @@
     return [{ role: 'user', content }];
   };
 
+  const isMultipleChoice = () => !!document.querySelector('.el-checkbox-group.checkbox-view');
+
+  const getQuizOptions = () => {
+    if (isMultipleChoice()) {
+      return [...document.querySelectorAll('.el-checkbox-group.checkbox-view .el-checkbox')];
+    }
+    return [...document.querySelectorAll('ul.radio-view li')];
+  };
+
+  const parseAnswerLetters = (raw) => {
+    const match = (raw || '').match(/答案[：:]\s*([A-Z]+)/i);
+    return match ? [...match[1].toUpperCase()] : [];
+  };
+
   const answerWithAI = async (blocks) => {
-    const opts = [...document.querySelectorAll('ul.radio-view li')];
+    const mc = isMultipleChoice();
+    const opts = getQuizOptions();
     if (!opts.length) return;
 
-    const optLines = opts.map((li, i) => `${String.fromCharCode(65 + i)}. ${li.innerText.trim()}`);
+    const optLines = opts.map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt.innerText.trim()}`);
     const { raw } = await requestAI(
-      (attempt, chatState) => buildQuizMessages(blocks, optLines, attempt, chatState),
+      (attempt, chatState) => buildQuizMessages(blocks, optLines, attempt, chatState, mc),
       (raw) => isValidQuizAnswer(raw, opts.length),
     );
 
-    const letter = parseAnswerLetter(raw);
-    const idx = letter.charCodeAt(0) - 65;
-    const targetOpt = opts[idx];
-    if (targetOpt) {
-      const oldClass = targetOpt.className;
-      await clickUntilGone(() => {
-        return targetOpt.className === oldClass ? targetOpt : null;
-      }, 3000, 100);
+    const letters = parseAnswerLetters(raw);
+    for (const letter of letters) {
+      const idx = letter.charCodeAt(0) - 65;
+      const targetOpt = opts[idx];
+      if (!targetOpt) continue;
+      if (mc) {
+        if (!targetOpt.classList.contains('is-checked')) {
+          click(targetOpt);
+          await waitFor(() => targetOpt.classList.contains('is-checked') ? true : null, 3000, 50);
+        }
+      } else {
+        const oldClass = targetOpt.className;
+        await clickUntilGone(() => {
+          return targetOpt.className === oldClass ? targetOpt : null;
+        }, 3000, 100);
+      }
     }
   };
 
@@ -375,8 +405,12 @@
     // 确保题目容器和选项文本被 JS 异步渲染出来
     const isReady = await waitFor(() => {
       const q = document.querySelector('.questionContent');
-      const opts = document.querySelectorAll('ul.radio-view li');
-      return q && q.innerText.trim() && opts.length > 0 && opts[0].innerText.trim() ? q : null;
+      if (!q || !q.innerText.trim()) return null;
+      const mc = !!document.querySelector('.el-checkbox-group.checkbox-view');
+      const opts = mc
+        ? document.querySelectorAll('.el-checkbox-group.checkbox-view .el-checkbox')
+        : document.querySelectorAll('ul.radio-view li');
+      return opts.length > 0 && opts[0].innerText.trim() ? q : null;
     }, 30000);
     if (!isReady) return false;
 
