@@ -340,7 +340,7 @@
   const answerWithAI = async (blocks) => {
     const mc = isMultipleChoice();
     const opts = getQuizOptions();
-    if (!opts.length) return;
+    if (!opts.length) return null;
 
     const optLines = opts.map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt.innerText.trim()}`);
     const { raw } = await requestAI(
@@ -365,6 +365,7 @@
         }, 3000);
       }
     }
+    return raw;
   };
 
   // 获取当前未答题目
@@ -434,8 +435,8 @@
     const oldText = isReady.innerText; // 备份当前题目文本，用于防错比对
     panelNotify('quiz', { phase: 'start' });
     try {
-      await answerWithAI(readQuestion());
-      panelNotify('quiz', { phase: 'done' });
+      const aiRaw = await answerWithAI(readQuestion());
+      panelNotify('quiz', { phase: 'done', aiOutput: aiRaw });
     } catch (e) {
       panelNotify('error', e?.message || 'AI 答题失败');
       return false;
@@ -766,7 +767,7 @@
           break;
         case 'quiz':
           if (detail?.phase === 'start') addLog('AI 答题中…');
-          else if (detail?.phase === 'done') addLog('AI 答题完成');
+          else if (detail?.phase === 'done') addLog(`AI 答题完成 | ${detail.aiOutput || ''}`);
           break;
         case 'error':
           addLog(detail || '发生错误', true);
