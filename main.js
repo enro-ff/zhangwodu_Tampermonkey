@@ -58,9 +58,7 @@
   const detectScreen = () => {
     // RESULT · 成绩页：有正确率/得分图表（PRE_QUIZ 也有 backup-icon，不能用它判断）
     if (document.querySelector('.charts-rate')) return SCREENS.RESULT;
-    // QUIZ · 提交子阶段：「完成查看 / 提交作业」按钮
-    if (document.querySelector('.reviewDone.ZHIHUISHU_QZMD')) return SCREENS.QUIZ;
-    // QUIZ · 答题子阶段：题干已渲染
+    // QUIZ · 答题页：题干已渲染（不用 reviewDone 探测，提交钮可能常驻）
     const q = document.querySelector('.questionContent');
     if (q?.innerText?.trim()) return SCREENS.QUIZ;
     // PRE_QUIZ · 提升入口页：「提升 / 开始」按钮

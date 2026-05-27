@@ -110,7 +110,7 @@ LIST ──选低分题──► DETAIL ──去提升──► PRE_QUIZ ──
 
 | 用途 | 选择器 / 逻辑 | 说明 |
 |------|---------------|------|
-| 识别本屏 | `.questionContent` 有非空 `innerText` | 题干容器 |
+| 识别本屏 | `.questionContent` 有非空 `innerText` | 题干容器；**不用 `.reviewDone` 探测**（提交钮可能常驻） |
 | 等待就绪 | `.questionContent` + `ul.radio-view li` 有选项文案 | **答题前，确保题目和选项被 JS 异步渲染出来** |
 | 读题 | `.questionContent` 内文本与 `IMG` | 送 AI；图片题会附带 `image_url` |
 | 选项 | `ul.radio-view li` | 单选列表 |
