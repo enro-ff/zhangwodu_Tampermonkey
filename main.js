@@ -41,7 +41,19 @@
   });
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const isLoopOn = () => GM_getValue(LOOP_KEY, false);
+
+  const isLoopOn = () => {
+    const date = Date.now();
+    return GM_getValue(LOOP_KEY, 0) >= date
+  }
+
+  const setLoopKey = (value = false) => {
+    if(value){
+      GM_setValue(LOOP_KEY, Date.now() + 1000 * 60 * 2);
+    }else{
+      GM_setValue(LOOP_KEY, 0);
+    }
+  }
 
   const parsePct = (el) => parseInt((el?.innerText || '').replace(/\D/g, ''), 10);
 
@@ -377,7 +389,7 @@
     if (!hasDashboard) return false;
 
     if (!hasListWork()) {
-      GM_setValue(LOOP_KEY, false);
+      setLoopKey(false);
       return false;
     }
 
@@ -386,16 +398,19 @@
   }
 
   async function runDetailHop() {
+    setLoopKey(true);//更新时间戳
     // 从 LIST 点进 DETAIL 后：进入题目，点击「去提升」
     return clickUntilGone('.simplified-mastery__action');
   }
 
   async function runDetailExitHop() {
+    setLoopKey(true);//更新时间戳
     // DETAIL 退回 LIST：脚本首次进入、或 RESULT 退出链落点（小箭头实际路由仍到 DETAIL 的上一级）
     return clickUntilGone(NAV_BACK_SEL);
   }
 
   async function runPreQuizHop() {
+    setLoopKey(true);//更新时间戳
     // 狂点「提升 / 开始」按钮，直到它消失
     return clickUntilGone('.improve-btn');
   }
@@ -424,6 +439,8 @@
       return false;
     }
 
+    setLoopKey(true);//更新时间戳
+
     // 侧栏还有未答题 → 切下一题（不能提交）
     if (getMismatchNode()) {
       return clickUntilGone(() => {
@@ -435,6 +452,7 @@
 
     panelNotify('hop', { screen: SCREENS.QUIZ, action: '提交作业' });
     // 侧栏无未答题 → 提交（reviewDone 可能一直存在，仅作点击目标）
+    setLoopKey(true);//更新时间戳
     return clickUntilGone('.reviewDone.ZHIHUISHU_QZMD');
   }
 
@@ -864,7 +882,7 @@
         await sleep(ROUTE_SETTLE_MS);
 
         if (detectScreen() === SCREENS.LIST && !hasListWork()) {
-          GM_setValue(LOOP_KEY, false);
+          setLoopKey(false);
           panelNotify('hop', { screen: SCREENS.LIST, action: '无待刷题目，关闭循环' });
           break;
         }
@@ -877,13 +895,13 @@
 
   function startChain() {
     unsafeWindow.__ZHS_STOP = false;
-    GM_setValue(LOOP_KEY, true);
+    setLoopKey(true);
     runFromHere();
   }
 
   function stopChain() {
     unsafeWindow.__ZHS_STOP = true;
-    GM_setValue(LOOP_KEY, false);
+    setLoopKey(false);
     panelNotify('stop');
   }
 
