@@ -48,7 +48,7 @@
   }
 
   const setLoopKey = (value = false) => {
-    if(value){
+    if(value && !unsafeWindow.__ZHS_STOP){
       GM_setValue(LOOP_KEY, Date.now() + 1000 * 60 * 2);
     }else{
       GM_setValue(LOOP_KEY, 0);
