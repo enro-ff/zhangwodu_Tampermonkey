@@ -217,7 +217,7 @@
    * @param {number} timeout 最大超时时间（毫秒）
    * @param {number} step 点击轮询间隔（毫秒），100ms 保证极高灵敏度
    */
-  const clickUntilGone = async (selectorOrFn, timeout = 15000, step = 100) => {
+  const clickUntilGone = async (selectorOrFn, timeout = 15000, step = 200) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
       if (unsafeWindow.__ZHS_STOP) return false;
@@ -360,7 +360,7 @@
         const oldClass = targetOpt.className;
         await clickUntilGone(() => {
           return targetOpt.className === oldClass ? targetOpt : null;
-        }, 3000, 100);
+        }, 3000);
       }
     }
   };
