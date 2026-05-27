@@ -4,8 +4,6 @@
 // @version      1.6.0
 // @description  DOM 探测屏状态 + 页内控制面板；任意界面可续跑，仅手动开始后执行。
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
-// @match        https://smartcoursestudent.zhihuishu.com/*
-// @match        https://studentexamcomh5.zhihuishu.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -525,7 +523,7 @@
             <button class="icon-btn" id="btn-collapse" type="button" title="折叠">−</button>
           </div>
           <div class="panel" style="padding:10px">
-            <div class="settings" id="settings-panel">
+            <div class="settings open" id="settings-panel">
               <div class="form-group"><label>API Base URL</label><input id="inp-baseurl" type="text"></div>
               <div class="form-group"><label>API Key</label><input id="inp-apikey" type="password"></div>
               <div class="form-group"><label>Model Name</label><input id="inp-model" type="text"></div>
