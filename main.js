@@ -20,6 +20,7 @@
   const LOOP_KEY = 'zhs_loop';
   const PANEL_POS_KEY = 'zhs_panel_pos';
   const PANEL_COLLAPSED_KEY = 'zhs_panel_collapsed';
+  const THRESHOLD_KEY = 'zhs_threshold';
   const MAX_HOPS = 500;
   const ROUTE_SETTLE_MS = 200;
   const NAV_BACK_SEL = '[class*="w-[32px]"][class*="h-[32px]"].cursor-pointer';
@@ -55,12 +56,15 @@
     }
   }
 
+  const getThreshold = () => GM_getValue(THRESHOLD_KEY, 80);
+
   const parsePct = (el) => parseInt((el?.innerText || '').replace(/\D/g, ''), 10);
 
   const findLowPctProgress = () => {
+    const threshold = getThreshold();
     for (const el of document.querySelectorAll('.el-progress--dashboard')) {
       const pct = parsePct(el);
-      if (!Number.isNaN(pct) && pct < 80) return el;
+      if (!Number.isNaN(pct) && pct < threshold) return el;
     }
     return null;
   };
@@ -654,6 +658,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
                 <div class="form-group"><label>API Base URL</label><input id="inp-baseurl" type="text" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
                 <div class="form-group"><label>API Key</label><input id="inp-apikey" type="password" placeholder="输入你的 API Key"></div>
                 <div class="form-group"><label>Model Name</label><input id="inp-model" type="text" placeholder="推荐：qwen-vl-plus"></div>
+                <div class="form-group"><label>掌握度阈值 (%)</label><input id="inp-threshold" type="number" min="0" max="100" placeholder="默认 80"></div>
               </div>
               <div class="btns" style="margin:6px 0 0 0">
                 <button class="btn btn-start" id="btn-save-settings" type="button">保存配置</button>
@@ -698,6 +703,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     const inpBaseUrl = shadow.getElementById('inp-baseurl');
     const inpApiKey = shadow.getElementById('inp-apikey');
     const inpModel = shadow.getElementById('inp-model');
+    const inpThreshold = shadow.getElementById('inp-threshold');
     const btnSaveSettings = shadow.getElementById('btn-save-settings');
 
     const logs = [];
@@ -759,6 +765,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       inpBaseUrl.value = GM_getValue('zhs_api_baseurl', '');
       inpApiKey.value = GM_getValue('zhs_api_apikey', '');
       inpModel.value = GM_getValue('zhs_api_model', '');
+      inpThreshold.value = GM_getValue(THRESHOLD_KEY, 80);
     };
 
     const refreshApiStatus = () => {
@@ -877,6 +884,10 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       GM_setValue('zhs_api_baseurl', inpBaseUrl.value.trim());
       GM_setValue('zhs_api_apikey', inpApiKey.value.trim());
       GM_setValue('zhs_api_model', inpModel.value.trim());
+      const threshold = parseInt(inpThreshold.value, 10);
+      if (!Number.isNaN(threshold) && threshold >= 0 && threshold <= 100) {
+        GM_setValue(THRESHOLD_KEY, threshold);
+      }
       settingsPanel.classList.remove('open');
       addLog('API 配置已保存');
       refreshApiStatus();
