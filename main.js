@@ -243,7 +243,46 @@
     return null;
   };
 
-  const getQuestionBlocks = (root) => {
+const enlargeSmallImage = (imgEl, minTarget = 20) =>
+  new Promise((resolve) => {
+    const w = imgEl.naturalWidth || imgEl.width || 0;
+    const h = imgEl.naturalHeight || imgEl.height || 0;
+    if (w > 10 && h > 10) {
+      resolve(imgEl.src);
+      return;
+    }
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: imgEl.src,
+      responseType: 'blob',
+      onload: (resp) => {
+        const blob = resp.response;
+        const blobUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(blobUrl); // 及时释放内存
+          const scale = minTarget / Math.min(img.width, img.height);
+          const nw = Math.round(img.width * scale);
+          const nh = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = nw;
+          canvas.height = nh;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, nw, nh);
+          resolve(canvas.toDataURL('image/png'));
+          console.log('url',canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(blobUrl);
+          resolve(imgEl.src);
+        };
+        img.src = blobUrl;
+      },
+      onerror: () => resolve(imgEl.src),
+    });
+  });
+
+  const getQuestionBlocks = async (root) => {
     if (!root) return [];
     const blocks = [];
     let imgIndex = 0;
@@ -256,7 +295,7 @@
       else blocks.push({ type: 'text', content: t });
     };
 
-    const walk = (node) => {
+    const walk = async (node) => {
       if (node.nodeType === 3) {
         pushText(node.textContent);
         return;
@@ -265,14 +304,19 @@
       if (/^(SCRIPT|STYLE)$/i.test(node.tagName)) return;
       if (node.classList?.contains('upload')) return;
       if (node.tagName === 'IMG') {
+        if(node.src === 'https://hike-export.oss-cn-hangzhou.aliyuncs.com/p…20260130/fc9f26dc-8a16-44b9-b171-17a42641b0da.png'){//傻逼智慧树这个图片ai识别错误
+          pushText('x');
+          return;
+        }
         const w = node.naturalWidth || node.width || 0;
         const h = node.naturalHeight || node.height || 0;
-        if (w > 10 && h > 10) {
+        if (w > 0 && h > 0) {
           imgIndex += 1;
+          const src = await enlargeSmallImage(node);
           blocks.push({
             type: 'image',
             index: imgIndex,
-            src: node.src || '',
+            src,
             alt: node.alt || '',
           });
         }
@@ -282,23 +326,21 @@
         pushText('\n');
         return;
       }
-      for (const child of node.childNodes) walk(child);
+      for (const child of node.childNodes) await walk(child);
     };
 
-    walk(root);
+    await walk(root);
     return blocks;
   };
 
   const blocksToMarkdown = (blocks) =>
     blocks.map((b) => (b.type === 'text' ? b.content : `[IMAGE:${b.index}]`)).join('\n');
 
-  const readQuestion = () => {
+  const readQuestion = async () => {
     const root = document.querySelector('.questionContent');
-    const blocks = getQuestionBlocks(root);
+    const blocks = await getQuestionBlocks(root);
     unsafeWindow.__questionBlocks = blocks;
     const md = blocksToMarkdown(blocks);
-    // if (md) console.log(md);
-    // blocks.filter((b) => b.type === 'image').forEach((b) => console.log(b.src));
     return blocks;
   };
 
@@ -435,7 +477,7 @@
     const oldText = isReady.innerText; // 备份当前题目文本，用于防错比对
     panelNotify('quiz', { phase: 'start' });
     try {
-      const aiRaw = await answerWithAI(readQuestion());
+      const aiRaw = await answerWithAI(await readQuestion());
       panelNotify('quiz', { phase: 'done', aiOutput: aiRaw });
     } catch (e) {
       panelNotify('error', e?.message || 'AI 答题失败');
@@ -934,3 +976,4 @@
     if (isLoopOn() && !unsafeWindow.__ZHS_STOP) runFromHere();
   });
 })();
+
