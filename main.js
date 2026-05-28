@@ -456,8 +456,8 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
 
   async function runPreQuizHop() {
     setLoopKey(true);//更新时间戳
-    // 狂点「提升 / 开始」按钮，直到它消失
-    return clickUntilGone('.improve-btn');
+    // �提升 / 开始提升 / 开始」按钮，直到它消失
+    return clickUntilGone('.improve-btn',undefined, 10000);//傻逼智慧树不做防抖
   }
 
   /** QUIZ = 答题 + 提交（同一屏）；是否提交由 getMismatchNode 判断，不用 reviewDone 是否存在 */
