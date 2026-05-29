@@ -178,6 +178,7 @@
 
   const callAIOnce = (messages) =>
     new Promise((resolve, reject) => {
+      console.log(messages, 'messages');
       const apiCfg = getApiCfg();
       GM_xmlhttpRequest({
         method: 'POST',
@@ -190,6 +191,7 @@
           model: apiCfg.model,
           messages,
           temperature: 0.2,
+          max_tokens: 1024,  
         }),
         timeout: AI_CHAT.timeoutMs,
         onload: (res) => {
@@ -225,7 +227,9 @@
 
       try {
         const messages = buildMessages(attempt, chatState);
+        chatState.memory = messages
         const raw = await callAIOnce(messages);
+        console.log(`AI 响应: ${raw}`);
         chatState.lastRaw = raw;
 
         if (validate(raw)) {
@@ -388,23 +392,42 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
   };
 
   const buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false) => {
+    const memory = chatState.memory || [];
     const answerFmt = isMultiple
       ? '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）'
       : '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）';
-    let prompt = `请逐步用平文本思考并选出正确答案的选项。${answerFmt}。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
 
-    if (attempt > 1 && chatState.lastRaw) {
-      prompt += `\n\n【重试】你上次回答不合规（需以"答案：X"结尾且 X 为有效选项字母）。请重新作答。上次回答：\n${chatState.lastRaw}`;
-    } else if (attempt > 1 && chatState.lastError) {
-      prompt = `请逐步用平文本思考并选出正确答案的选项。${answerFmt}。题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}`;
+    if(!memory.length) {
+      memory.push({
+        role: 'system',
+        content: `你是一个专业的做题助手，你的任务是根据用户的题目，生成符合要求的选项，请逐步用平文本思考并选出正确答案的选项。${answerFmt}。`})
     }
-
-
-    const content = [{ type: 'text', text: prompt }];
-    blocks
+    if (attempt > 1 && chatState.lastRaw){
+      memory.push({
+        role: 'assistant',
+        content: chatState.lastRaw,
+      })
+    }
+    if(memory.length < 2) {
+      const content = [{ type: 'text', text: `题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}` }];
+      blocks
       .filter((b) => b.type === 'image')
       .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
-    return [{ role: 'user', content }];
+      memory.push({
+        role: 'user',
+        content
+      })
+    }
+
+    if (attempt > 1 ){
+      memory.push({
+        role: 'user',
+        content: `\n\n你上次回答不合规（需以"答案：X"结尾且 X 为有效选项字母），有可能是因为回答太长截断。请你简短的总结上一次的回答思路（不超过3句话），按更短的链路继续上次的思路回答`,
+      })
+    }
+
+    
+    return memory;
   };
 
   const isMultipleChoice = () => !!document.querySelector('.el-checkbox-group.checkbox-view');
