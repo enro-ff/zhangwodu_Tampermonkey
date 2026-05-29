@@ -21,6 +21,20 @@
   const PANEL_POS_KEY = 'zhs_panel_pos';
   const PANEL_COLLAPSED_KEY = 'zhs_panel_collapsed';
   const THRESHOLD_KEY = 'zhs_threshold';
+  const RETRY_KEY_PREFIX = 'zhs_retry_';
+  const RETRY_MAX_KEY = 'zhs_retry_max';
+  const MAX_RETRIES = 3;
+
+  const getPageUrlKey = () => {
+    try {
+      return new URL(window.location.href).pathname.replace(/\//g, '_').replace(/^_+|_+$/g, '') || 'root';
+    } catch {
+      return 'unknown';
+    }
+  };
+
+  const makeRetryKey = (index) => `${RETRY_KEY_PREFIX}${getPageUrlKey()}_${index}`;
+  const makeRetryMaxKey = () => `${RETRY_MAX_KEY}_${getPageUrlKey()}`;
   const MAX_HOPS = 500;
   const ROUTE_SETTLE_MS = 200;
   const NAV_BACK_SEL = '[class*="w-[32px]"][class*="h-[32px]"].cursor-pointer';
@@ -62,13 +76,38 @@
 
   const findLowPctProgress = () => {
     const threshold = getThreshold();
-    for (const el of document.querySelectorAll('.el-progress--dashboard')) {
+    const all = [...document.querySelectorAll('.el-progress--dashboard')];
+    updateRetryMax(all.length)
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
       const pct = parsePct(el);
-      if (!Number.isNaN(pct) && pct < threshold) return el;
+      if (!Number.isNaN(pct) && pct < threshold && lowThanMaxRetry(i)) {
+        incRetryCount(i)
+        return el;
+      }
     }
     return null;
   };
 
+  const getRetryCount = (index) => GM_getValue(makeRetryKey(index), 0);
+  const setRetryCount = (index, count) => GM_setValue(makeRetryKey(index), count);
+  const incRetryCount = (index) => setRetryCount(index, getRetryCount(index) + 1);
+  const resetRetryCounts = () => {
+    const max = GM_getValue(makeRetryMaxKey(), 0);
+    for (let i = 0; i < max; i++) {
+      GM_setValue(makeRetryKey(i), 0);
+    }
+  };
+  const updateRetryMax = (newV) => {
+    const current = GM_getValue(makeRetryMaxKey(), 0);
+    const num = parseInt(newV, 10);
+    if (!Number.isNaN(num) && num >= current) GM_setValue(makeRetryMaxKey(), num + 1);
+  };
+
+  const lowThanMaxRetry = (i) => {
+    return  getRetryCount(i) < MAX_RETRIES
+  }
+  
   const hasListWork = () => !!findLowPctProgress();
 
   /** 按流程从后往前探测当前屏（SPA 路由不刷新） */
@@ -442,7 +481,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       return false;
     }
 
-    // 点击掌握度不足 80% 的题目，直到该目标在页面上消失
+    // 点击掌握度不足阈值的题目，跳过重试超限的，直到该目标在页面上消失
     return clickUntilGone(() => findLowPctProgress());
   }
 
@@ -663,6 +702,9 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
               <div class="btns" style="margin:6px 0 0 0">
                 <button class="btn btn-start" id="btn-save-settings" type="button">保存配置</button>
               </div>
+              <div class="btns" style="margin:6px 0 0 0">
+                <button class="btn btn-stop" id="btn-reset-retry" type="button">重置做题次数</button>
+              </div>
             </div>
             <div class="section-label">运行状态</div>
             <div class="steps" id="steps">${CHAIN_STEPS.map((s) => `<div class="step" data-id="${s.id}">${s.label}</div>`).join('')}</div>
@@ -705,6 +747,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     const inpModel = shadow.getElementById('inp-model');
     const inpThreshold = shadow.getElementById('inp-threshold');
     const btnSaveSettings = shadow.getElementById('btn-save-settings');
+    const btnResetRetry = shadow.getElementById('btn-reset-retry');
 
     const logs = [];
     let running = false;
@@ -891,6 +934,11 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       settingsPanel.classList.remove('open');
       addLog('API 配置已保存');
       refreshApiStatus();
+    });
+
+    btnResetRetry.addEventListener('click', () => {
+      resetRetryCounts();
+      addLog('做题次数已重置');
     });
 
     return { handle, refreshStatus, setScreen: (s) => { currentScreen = s; refreshStatus(); } };
