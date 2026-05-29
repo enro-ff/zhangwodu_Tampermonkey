@@ -53,7 +53,17 @@
     baseUrl: GM_getValue('zhs_api_baseurl', ''),
     apiKey: GM_getValue('zhs_api_apikey', ''),
     model: GM_getValue('zhs_api_model', ''),
+    maxTokens: GM_getValue('zhs_api_maxtokens', 2048),
   });
+
+  const saveMaxTokens = (val) => {
+    const num = parseInt(val, 10);
+    if (!Number.isNaN(num) && num >= 256 && num <= 8192) {
+      GM_setValue('zhs_api_maxtokens', num);
+      return true;
+    }
+    return false;
+  };
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -191,7 +201,7 @@
           model: apiCfg.model,
           messages,
           temperature: 0.2,
-          max_tokens: 1024,  
+          max_tokens: apiCfg.maxTokens,
         }),
         timeout: AI_CHAT.timeoutMs,
         onload: (res) => {
@@ -720,6 +730,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
                 <div class="form-group"><label>API Base URL</label><input id="inp-baseurl" type="text" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
                 <div class="form-group"><label>API Key</label><input id="inp-apikey" type="password" placeholder="输入你的 API Key"></div>
                 <div class="form-group"><label>Model Name</label><input id="inp-model" type="text" placeholder="推荐：qwen-vl-plus"></div>
+                <div class="form-group"><label>Max Tokens</label><input id="inp-maxtokens" type="number" min="256" max="8192" placeholder="默认 2048"></div>
                 <div class="form-group"><label>掌握度阈值 (%)</label><input id="inp-threshold" type="number" min="0" max="100" placeholder="默认 80"></div>
               </div>
               <div class="btns" style="margin:6px 0 0 0">
@@ -768,6 +779,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     const inpBaseUrl = shadow.getElementById('inp-baseurl');
     const inpApiKey = shadow.getElementById('inp-apikey');
     const inpModel = shadow.getElementById('inp-model');
+    const inpMaxTokens = shadow.getElementById('inp-maxtokens');
     const inpThreshold = shadow.getElementById('inp-threshold');
     const btnSaveSettings = shadow.getElementById('btn-save-settings');
     const btnResetRetry = shadow.getElementById('btn-reset-retry');
@@ -831,6 +843,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       inpBaseUrl.value = GM_getValue('zhs_api_baseurl', '');
       inpApiKey.value = GM_getValue('zhs_api_apikey', '');
       inpModel.value = GM_getValue('zhs_api_model', '');
+      inpMaxTokens.value = GM_getValue('zhs_api_maxtokens', 2048);
       inpThreshold.value = GM_getValue(THRESHOLD_KEY, 80);
     };
 
@@ -950,6 +963,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       GM_setValue('zhs_api_baseurl', inpBaseUrl.value.trim());
       GM_setValue('zhs_api_apikey', inpApiKey.value.trim());
       GM_setValue('zhs_api_model', inpModel.value.trim());
+      saveMaxTokens(inpMaxTokens.value);
       const threshold = parseInt(inpThreshold.value, 10);
       if (!Number.isNaN(threshold) && threshold >= 0 && threshold <= 100) {
         GM_setValue(THRESHOLD_KEY, threshold);
@@ -1041,6 +1055,8 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     if (key !== null) GM_setValue('zhs_api_apikey', key.trim());
     const model = prompt('输入 Model Name（如 qwen-vl-plus,qwen3.6-flash-2026-04-16）:', GM_getValue('zhs_api_model', ''));
     if (model !== null) GM_setValue('zhs_api_model', model.trim());
+    const maxTokens = prompt('输入 Max Tokens（默认 2048）:', GM_getValue('zhs_api_maxtokens', 2048));
+    if (maxTokens !== null) saveMaxTokens(maxTokens);
   });
 
   panelCtx = createPanel({ onStart: startChain, onStop: stopChain });
