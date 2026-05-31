@@ -127,7 +127,7 @@
   const lowThanMaxRetry = (i) => {
     return  getRetryCount(i) < MAX_RETRIES
   }
-  
+
   const hasListWork = () => !!findLowPctProgress();
 
   /** 按流程从后往前探测当前屏（SPA 路由不刷新） */
@@ -336,8 +336,8 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
           canvas.height = nh;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, nw, nh);
-          resolve(canvas.toDataURL('image/png'));
           console.log('url',canvas.toDataURL('image/png'));
+          resolve(canvas.toDataURL('image/png'));
         };
         img.onerror = () => {
           URL.revokeObjectURL(blobUrl);
@@ -446,7 +446,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       })
     }
 
-    
+
     return memory;
   };
 
@@ -1090,4 +1090,3 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     if (isLoopOn() && !unsafeWindow.__ZHS_STOP) runFromHere();
   });
 })();
-
