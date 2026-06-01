@@ -736,7 +736,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
             <div class="settings open" id="settings-panel">
               <div class="section-label">AI 配置</div>
               <div class="settings-hint">首次使用请先填入接口地址、密钥和模型名。</div>
-              <div class="vision-tip">建议优先使用带视觉能力的模型，例如 <b>qwen-vl-plus</b>。纯文本模型遇到题目图片时更容易失败。</div>
+              <div class="vision-tip">建议优先使用带视觉能力的模型。纯文本模型遇到题目图片时更容易失败。</div>
               <div class="form-grid">
                 <div class="form-group"><label>API Base URL</label><input id="inp-baseurl" type="text" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
                 <div class="form-group"><label>API Key</label><input id="inp-apikey" type="password" placeholder="输入你的 API Key"></div>
