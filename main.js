@@ -23,7 +23,7 @@
   const THRESHOLD_KEY = 'zhs_threshold';
   const RETRY_KEY_PREFIX = 'zhs_retry_';
   const RETRY_MAX_KEY = 'zhs_retry_max';
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 4;
 
   const getPageUrlKey = () => {
     try {
@@ -94,7 +94,7 @@
 
   const parsePct = (el) => parseInt((el?.innerText || '').replace(/\D/g, ''), 10);
 
-  const findLowPctProgress = () => {
+  const findLowPctProgress = (increase = false) => {
     const threshold = getThreshold();
     const all = [...document.querySelectorAll('.el-progress--dashboard')];
     updateRetryMax(all.length)
@@ -102,7 +102,7 @@
       const el = all[i];
       const pct = parsePct(el);
       if (!Number.isNaN(pct) && pct < threshold && lowThanMaxRetry(i)) {
-        incRetryCount(i)
+        if(increase)incRetryCount(i);
         return el;
       }
     }
@@ -115,7 +115,7 @@
   const resetRetryCounts = () => {
     const max = GM_getValue(makeRetryMaxKey(), 0);
     for (let i = 0; i < max; i++) {
-      GM_setValue(makeRetryKey(i), 0);
+      setRetryCount(i, 0);
     }
   };
   const updateRetryMax = (newV) => {
@@ -125,7 +125,7 @@
   };
 
   const lowThanMaxRetry = (i) => {
-    return  getRetryCount(i) < MAX_RETRIES
+    return  getRetryCount(i) <= MAX_RETRIES
   }
 
   const hasListWork = () => !!findLowPctProgress();
@@ -523,7 +523,8 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       setLoopKey(false);
       return false;
     }
-
+    const el = await waitFor(() => findLowPctProgress(true));
+    
     // 点击掌握度不足阈值的题目，跳过重试超限的，直到该目标在页面上消失
     return clickUntilGone(() => findLowPctProgress());
   }
@@ -543,7 +544,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
   async function runPreQuizHop() {
     setLoopKey(true);//更新时间戳
     // �提升 / 开始提升 / 开始」按钮，直到它消失
-    return clickUntilGone('.improve-btn',undefined, 10000);//傻逼智慧树不做防抖
+    return clickUntilGone('.improve-btn',20000, 5000);//傻逼智慧树不做防抖
   }
 
   /** QUIZ = 答题 + 提交（同一屏）；是否提交由 getMismatchNode 判断，不用 reviewDone 是否存在 */
