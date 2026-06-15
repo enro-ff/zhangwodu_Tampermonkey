@@ -1,0 +1,26 @@
+{
+  "name": "zhangwodu_tampermonkey",
+  "version": "1.0.0",
+  "description": "这是一款运行在 **Tampermonkey** 或 **ScriptCat** 浏览器插件上的自动化脚本，旨在帮助用户自动完成智慧树平台课程答题任务。它能自动识别题目、调用 AI 答题、自动点击按钮、自动循环刷题。",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.js",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enro-ff/zhangwodu_Tampermonkey.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/enro-ff/zhangwodu_Tampermonkey/issues"
+  },
+  "homepage": "https://github.com/enro-ff/zhangwodu_Tampermonkey#readme",
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "vitest": "^4.1.9"
+  }
+}
