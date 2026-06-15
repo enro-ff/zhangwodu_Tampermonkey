@@ -669,6 +669,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
         .wrap::before{top:-5vh;right:-4vw;width:12vw;height:14vw;background:radial-gradient(circle,rgba(164,212,179,.18),rgba(164,212,179,0));filter:blur(8px)}
         .wrap::after{bottom:-4vh;left:-3vw;width:10vw;height:10vw;background:radial-gradient(circle,rgba(215,234,220,.36),rgba(215,234,220,0));filter:blur(10px)}
         .wrap.collapsed{width:auto;height:auto;background:transparent;border:none;box-shadow:none}
+        .wrap.collapsed::before,.wrap.collapsed::after{display:none}
         .fab{display:none;width:58px;height:58px;border-radius:18px;background:linear-gradient(180deg,#dcefe0,#cfe8d5);border:1px solid rgba(125,164,138,.3);color:#456556;font-weight:800;font-size:12px;letter-spacing:.12em;cursor:pointer;align-items:center;justify-content:center;box-shadow:0 14px 32px rgba(87,118,96,.15)}
         .wrap.collapsed .fab{display:flex}
         .wrap.collapsed .panel-shell{display:none}
@@ -829,8 +830,13 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       wrap.style.top = '0';
       wrap.style.left = 'auto';
       wrap.style.bottom = 'auto';
-      wrap.style.height = '100vh';
-      wrap.style.width = '28vw';
+      if (wrap.classList.contains('collapsed')) {
+        wrap.style.height = '';
+        wrap.style.width = '';
+      } else {
+        wrap.style.height = '100vh';
+        wrap.style.width = '28vw';
+      }
     };
 
     const savePos = (offsetX) => {
@@ -839,6 +845,8 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
 
     const setCollapsed = (collapsed) => {
       wrap.classList.toggle('collapsed', collapsed);
+      const savedPos = GM_getValue(PANEL_POS_KEY, { x: 0 });
+      applyPos(typeof savedPos?.x === 'number' ? savedPos.x : 0);
       GM_setValue(PANEL_COLLAPSED_KEY, collapsed);
     };
 
@@ -956,8 +964,6 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       });
     };
 
-    const savedPos = GM_getValue(PANEL_POS_KEY, { x: 0 });
-    applyPos(typeof savedPos?.x === 'number' ? savedPos.x : 0);
     setCollapsed(GM_getValue(PANEL_COLLAPSED_KEY, false));
 
     setupDrag(dragHandle);
