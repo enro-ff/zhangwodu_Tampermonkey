@@ -670,6 +670,15 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
         .wrap::after{bottom:-4vh;left:-3vw;width:10vw;height:10vw;background:radial-gradient(circle,rgba(215,234,220,.36),rgba(215,234,220,0));filter:blur(10px)}
         .wrap.collapsed{width:auto;height:auto;background:transparent;border:none;box-shadow:none}
         .wrap.collapsed::before,.wrap.collapsed::after{display:none}
+        .wrap.error{color:#6b2525;border-left:1px solid rgba(180,110,110,.25);background:linear-gradient(180deg,#fff5f5 0%,#ffebeb 56%,#ffd6d6 100%);box-shadow:-12px 0 32px rgba(110,60,60,.1)}
+        .wrap.error::before{background:radial-gradient(circle,rgba(239,154,154,.28),rgba(239,154,154,0))}
+        .wrap.error::after{background:radial-gradient(circle,rgba(255,138,128,.38),rgba(255,138,128,0))}
+        .wrap.error .header{background:linear-gradient(180deg,#ffe3e3 0%,#ffd6d6 100%);border-bottom:1px solid rgba(180,121,121,.22)}
+        .wrap.error .title{color:#6b2525}
+        .wrap.error .subtitle{color:#a35c5c}
+        .wrap.error .section-label{color:#a85353}
+        .wrap.error .section-label::after{background:linear-gradient(90deg,rgba(180,120,120,.26),rgba(180,120,120,0))}
+        .wrap.error .fab{background:linear-gradient(180deg,#ffd6d6,#fca3a3);border:1px solid rgba(180,125,125,.4);color:#6b2525;box-shadow:0 14px 32px rgba(118,87,87,.15)}
         .fab{display:none;width:58px;height:58px;border-radius:18px;background:linear-gradient(180deg,#dcefe0,#cfe8d5);border:1px solid rgba(125,164,138,.3);color:#456556;font-weight:800;font-size:12px;letter-spacing:.12em;cursor:pointer;align-items:center;justify-content:center;box-shadow:0 14px 32px rgba(87,118,96,.15)}
         .wrap.collapsed .fab{display:flex}
         .wrap.collapsed .panel-shell{display:none}
@@ -894,14 +903,17 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
     const handle = (event, detail) => {
       switch (event) {
         case 'init':
+          wrap.classList.remove('error');
           addLog('待命，点击「开始/继续」启动');
           refreshStatus();
           break;
         case 'start':
+          wrap.classList.remove('error');
           addLog('已开始');
           refreshStatus();
           break;
         case 'stop':
+          wrap.classList.remove('error');
           addLog('已停止');
           refreshStatus();
           break;
@@ -920,6 +932,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
           else if (detail?.phase === 'done') addLog(`AI 答题完成 | ${detail.aiOutput || ''}`);
           break;
         case 'error':
+          wrap.classList.add('error');
           addLog(detail || '发生错误', true);
           refreshStatus();
           break;
