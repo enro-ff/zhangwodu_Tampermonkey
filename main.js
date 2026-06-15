@@ -371,7 +371,7 @@ const enlargeSmallImage = (imgEl, minTarget = 20) =>
       if (/^(SCRIPT|STYLE)$/i.test(node.tagName)) return;
       if (node.classList?.contains('upload')) return;
       if (node.tagName === 'IMG') {
-        if(node.src === 'https://hike-export.oss-cn-hangzhou.aliyuncs.com/p…20260130/fc9f26dc-8a16-44b9-b171-17a42641b0da.png'){//傻逼智慧树这个图片ai识别错误
+        if(node.src.includes('fc9f26dc-8a16-44b9-b171-17a42641b0da')){//傻逼智慧树这个图片ai识别错误
           pushText('x');
           return;
         }
