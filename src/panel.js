@@ -145,6 +145,15 @@ export const createPanel = (handlers) => {
               <button class="btn btn-stop" id="btn-reset-retry" type="button">重置做题次数</button>
             </div>
           </div>
+          <div class="section-label">运行模式</div>
+          <div style="display:flex;gap:12px;margin: 4px 0 12px 0;">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+              <input type="radio" name="run-mode" value="chain" checked style="accent-color:#7fbb93;"> 掌握度自适应
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+              <input type="radio" name="run-mode" value="homework" style="accent-color:#7fbb93;"> 课后作业/测试
+            </label>
+          </div>
           <div class="section-label">运行状态</div>
           <div class="steps" id="steps">${CHAIN_STEPS.map((s) => `<div class="step" data-id="${s.id}">${s.label}</div>`).join('')}</div>
           <div class="meta">
@@ -259,6 +268,10 @@ export const createPanel = (handlers) => {
     inpMaxTokens.value = GM_getValue('zhs_api_maxtokens', 2048);
     inpTimeout.value = GM_getValue('zhs_api_timeout', 120000);
     inpThreshold.value = GM_getValue(THRESHOLD_KEY, 80);
+
+    const savedMode = GM_getValue('zhs_run_mode', 'chain');
+    const radio = shadow.querySelector(`input[name="run-mode"][value="${savedMode}"]`);
+    if (radio) radio.checked = true;
   };
 
   const refreshApiStatus = () => {
@@ -365,6 +378,13 @@ export const createPanel = (handlers) => {
   setupDrag(dragHandle);
   setupDrag(fab, () => setCollapsed(false));
   loadSettingsInputs();
+
+  shadow.querySelectorAll('input[name="run-mode"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      GM_setValue('zhs_run_mode', e.target.value);
+      addLog(`已切换运行模式：${e.target.value === 'chain' ? '掌握度自适应' : '课后作业/测试'}`);
+    });
+  });
 
   btnStart.addEventListener('click', () => handlers.onStart());
   btnStop.addEventListener('click', () => handlers.onStop());

@@ -1,0 +1,14 @@
+status-btn primary 选择测试，点击后过一段时间跳转到新页面，并且原页面不会消失，应该做状态锁
+info-btn 进入答题
+
+
+答题页面
+size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[46px] flex justify-center transition-all user-select relative bg-mainBg text-white  右侧，类似原先逻辑，当前题目
+size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[46px] flex justify-center transition-all user-select relative bg-mainBg/10 text-mainBg border-mainBg border hover:bg-mainBg hover:text-white 已作答
+size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[46px] flex justify-center transition-all user-select relative border-black/20 text-black/60 border hover:bg-mainBg hover:text-white没有写过
+flex items-center gap-2 px-[24px] py-[8px] bg-[#0D0D0D] hover:bg-gray-800 text-white rounded-[999px] text-[18px] font-AP-55 font-normal transition-colors user-select 提交作业，一直可以点击
+question-area-content 题目
+有这个 text-green bg-green-bg/80 px-[8px] h-[27px] font-AP-55 text-[18px] rounded-[2px] shrink-0 而且innertext是单选题就是单选题 以下为单选题的情况。
+flex items-center gap-4 user-select group 选项，包含在题目底下，点击css不会变化
+notranslate shrink-0 w-[30px] h-[30px] rounded-[999px] border border-round flex items-center justify-center font-AP-65 text-[#86909C] text-[18px] leading-[27px] transition-colors bg-white text-[#86909c] border-[#e5e6eb] group-hover:border-gray-400  里面的选项 例如 A.111里面的A 未选中
+notranslate shrink-0 w-[30px] h-[30px] rounded-[999px] border border-round flex items-center justify-center font-AP-65 text-[#86909C] text-[18px] leading-[27px] transition-colors bg-mainBg text-white border-mainBg 上面的已经选中状态

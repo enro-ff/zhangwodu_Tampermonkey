@@ -21,6 +21,7 @@ import {
 } from './dom.js';
 import { answerWithAI } from './api.js';
 import { panelNotify } from './panel.js';
+import { runHomeworkFlow } from './homework.js';
 
 export async function runListHop() {
   if (!isLoopOn()) return false;
@@ -117,8 +118,16 @@ export async function runOneHop(screen, expectDetailForward) {
   }
 }
 
+
+
 export async function runFromHere() {
   if (unsafeWindow.__ZHS_CHAIN_RUNNING) return;
+
+  const mode = GM_getValue('zhs_run_mode', 'chain');
+  if (mode === 'homework') {
+    return runHomeworkFlow();
+  }
+
   unsafeWindow.__ZHS_CHAIN_RUNNING = true;
   panelNotify('start');
   try {

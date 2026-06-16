@@ -415,6 +415,15 @@
               <button class="btn btn-stop" id="btn-reset-retry" type="button">重置做题次数</button>
             </div>
           </div>
+          <div class="section-label">运行模式</div>
+          <div style="display:flex;gap:12px;margin: 4px 0 12px 0;">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+              <input type="radio" name="run-mode" value="chain" checked style="accent-color:#7fbb93;"> 掌握度自适应
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+              <input type="radio" name="run-mode" value="homework" style="accent-color:#7fbb93;"> 课后作业/测试
+            </label>
+          </div>
           <div class="section-label">运行状态</div>
           <div class="steps" id="steps">${CHAIN_STEPS.map((s) => `<div class="step" data-id="${s.id}">${s.label}</div>`).join("")}</div>
           <div class="meta">
@@ -514,6 +523,9 @@
       inpMaxTokens.value = GM_getValue("zhs_api_maxtokens", 2048);
       inpTimeout.value = GM_getValue("zhs_api_timeout", 12e4);
       inpThreshold.value = GM_getValue(THRESHOLD_KEY, 80);
+      const savedMode = GM_getValue("zhs_run_mode", "chain");
+      const radio = shadow.querySelector(`input[name="run-mode"][value="${savedMode}"]`);
+      if (radio) radio.checked = true;
     };
     const refreshApiStatus = () => {
       const cfg = getApiCfg();
@@ -612,6 +624,12 @@ Key: ${keyLabel}`;
     setupDrag(dragHandle);
     setupDrag(fab, () => setCollapsed(false));
     loadSettingsInputs();
+    shadow.querySelectorAll('input[name="run-mode"]').forEach((input) => {
+      input.addEventListener("change", (e) => {
+        GM_setValue("zhs_run_mode", e.target.value);
+        addLog(`已切换运行模式：${e.target.value === "chain" ? "掌握度自适应" : "课后作业/测试"}`);
+      });
+    });
     btnStart.addEventListener("click", () => handlers.onStart());
     btnStop.addEventListener("click", () => handlers.onStop());
     btnCollapse.addEventListener("click", () => setCollapsed(true));
@@ -809,6 +827,155 @@ ${optLines.join("\n")}` }];
     return raw;
   };
 
+  // src/homework.js
+  var getHomeworkUnansweredButton = () => {
+    return document.querySelector(".border-black\\/20.text-black\\/60.border");
+  };
+  var isHomeworkCurrentAnswered = () => {
+    const selectedCircle = document.querySelector(".question-area-content .bg-mainBg");
+    return !!selectedCircle;
+  };
+  var getHomeworkSubmitButton = () => {
+    const allDivs = [...document.querySelectorAll("div, button")];
+    return allDivs.find((el) => {
+      const classes = el.className || "";
+      const hasBg = typeof classes === "string" && classes.includes("bg-[#0D0D0D]");
+      const hasText = (el.innerText || "").includes("提交作业");
+      return hasBg || hasText;
+    });
+  };
+  var buildHomeworkQuizMessages = (questionText, images, attempt, chatState, isSingle = true) => {
+    const memory = chatState.memory || [];
+    const answerFmt = isSingle ? '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）' : '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）';
+    if (!memory.length) {
+      memory.push({
+        role: "system",
+        content: `你是一个专业的做题助手，你的任务是根据用户的题目（包含题干 and 选项），请逐步用平文本思考并选出正确答案的选项。${answerFmt}。`
+      });
+    }
+    if (attempt > 1 && chatState.lastRaw) {
+      memory.push({
+        role: "assistant",
+        content: chatState.lastRaw
+      });
+    }
+    if (memory.length < 2) {
+      const content = [{ type: "text", text: `完整题目与选项内容如下：
+
+${questionText}` }];
+      images.forEach((src) => content.push({ type: "image_url", image_url: { url: src } }));
+      memory.push({
+        role: "user",
+        content
+      });
+    }
+    if (attempt > 1) {
+      memory.push({
+        role: "user",
+        content: `
+
+你上次回答不合规（需以"答案：X"结尾且 X 为有效选项字母），请你简短总结上一次的回答思路（不超过3句话），按更短的路线继续回答`
+      });
+    }
+    return memory;
+  };
+  var isValidHomeworkAnswer = (raw) => {
+    const match = (raw || "").match(/答案[：:]\s*([A-Z]+)/i);
+    return !!match;
+  };
+  var answerHomeworkWithAI = async (questionText, images, isSingle) => {
+    const { raw } = await requestAI(
+      (attempt, chatState) => buildHomeworkQuizMessages(questionText, images, attempt, chatState, isSingle),
+      (raw2) => isValidHomeworkAnswer(raw2)
+    );
+    return raw;
+  };
+  async function runHomeworkQuiz() {
+    while (!unsafeWindow.__ZHS_STOP) {
+      const container = await waitFor(() => {
+        const el = document.querySelector(".question-area-content");
+        return el && el.innerText.trim() ? el : null;
+      }, 15e3);
+      if (!container) return false;
+      const oldText = container.innerText;
+      panelNotify("quiz", { phase: "start" });
+      const questionContent = container.innerText;
+      const images = [...container.querySelectorAll("img")].map((img) => img.src);
+      const typeEl = document.querySelector(".text-green");
+      const isSingle = !!(typeEl && typeEl.innerText.includes("单选"));
+      let aiRaw;
+      try {
+        aiRaw = await answerHomeworkWithAI(questionContent, images, isSingle);
+        panelNotify("quiz", { phase: "done", aiOutput: aiRaw });
+      } catch (e) {
+        panelNotify("error", e?.message || "AI 答题失败");
+        return false;
+      }
+      const letters = parseAnswerLetters(aiRaw);
+      const optionContainers = [...container.querySelectorAll(".flex.items-center.gap-4.user-select.group")];
+      for (const letter of letters) {
+        const targetOption = optionContainers.find((opt) => {
+          const circle = opt.querySelector(".font-AP-65");
+          return circle && circle.innerText.trim().toUpperCase() === letter;
+        });
+        if (targetOption) {
+          click(targetOption);
+          await waitFor(() => {
+            const circle = targetOption.querySelector(".font-AP-65");
+            return circle && circle.classList.contains("bg-mainBg") ? true : null;
+          }, 3e3);
+        }
+      }
+      const nextUnansweredBtn = getHomeworkUnansweredButton();
+      if (nextUnansweredBtn) {
+        click(nextUnansweredBtn);
+        const changed = await waitFor(() => {
+          const curContainer = document.querySelector(".question-area-content");
+          return curContainer && curContainer.innerText.trim() !== oldText ? true : null;
+        }, 5e3);
+        if (!changed) {
+          panelNotify("error", "切换下一题失败");
+          return false;
+        }
+      } else {
+        if (isHomeworkCurrentAnswered()) {
+          const submitBtn = getHomeworkSubmitButton();
+          if (submitBtn) {
+            click(submitBtn);
+            return true;
+          } else {
+            panelNotify("error", "未找到提交作业按钮");
+            return false;
+          }
+        } else {
+          panelNotify("error", "题号答完但当前题目没有被勾选，请重试");
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+  async function runHomeworkFlow() {
+    if (unsafeWindow.__ZHS_CHAIN_RUNNING) return;
+    unsafeWindow.__ZHS_CHAIN_RUNNING = true;
+    panelNotify("start");
+    try {
+      panelNotify("screen", SCREENS.QUIZ);
+      const success = await runHomeworkQuiz();
+      if (success) {
+        panelNotify("hop", { screen: SCREENS.QUIZ, action: "作业答题完成并已提交！" });
+      } else {
+        panelNotify("error", "未识别到题目页面，或答题中断");
+      }
+    } catch (e) {
+      panelNotify("error", e?.message || "作业答题发生错误");
+    } finally {
+      unsafeWindow.__ZHS_CHAIN_RUNNING = false;
+      setLoopKey(false);
+      panelNotify("done");
+    }
+  }
+
   // src/flow.js
   async function runListHop() {
     if (!isLoopOn()) return false;
@@ -891,6 +1058,10 @@ ${optLines.join("\n")}` }];
   }
   async function runFromHere() {
     if (unsafeWindow.__ZHS_CHAIN_RUNNING) return;
+    const mode = GM_getValue("zhs_run_mode", "chain");
+    if (mode === "homework") {
+      return runHomeworkFlow();
+    }
     unsafeWindow.__ZHS_CHAIN_RUNNING = true;
     panelNotify("start");
     try {
