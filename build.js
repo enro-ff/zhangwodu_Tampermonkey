@@ -8,6 +8,7 @@ const header = `// ==UserScript==
 // @description  DOM 探测屏状态 + 页内控制面板；支持自定义 AI API（需使用有视觉能力的模型）；任意界面可续跑，仅手动开始后执行。
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
+// @match        https://examloop.zhihuishu.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand

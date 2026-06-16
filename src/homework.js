@@ -1,6 +1,6 @@
 import { SCREENS } from './constants.js';
 import { setLoopKey, sleep } from './utils.js';
-import { waitFor, click } from './dom.js';
+import { waitFor, click, getQuestionBlocks, blocksToMarkdown } from './dom.js';
 import { requestAI, parseAnswerLetters } from './api.js';
 import { panelNotify } from './panel.js';
 
@@ -88,8 +88,9 @@ export async function runHomeworkQuiz() {
     const oldText = container.innerText;
     panelNotify('quiz', { phase: 'start' });
 
-    const questionContent = container.innerText;
-    const images = [...container.querySelectorAll('img')].map(img => img.src);
+    const blocks = await getQuestionBlocks(container);
+    const questionContent = blocksToMarkdown(blocks);
+    const images = blocks.filter((b) => b.type === 'image').map((b) => b.src);
     const typeEl = document.querySelector('.text-green');
     const isSingle = !!(typeEl && typeEl.innerText.includes('单选'));
 

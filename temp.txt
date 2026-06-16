@@ -7,6 +7,11 @@ size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[4
 size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[46px] flex justify-center transition-all user-select relative bg-mainBg/10 text-mainBg border-mainBg border hover:bg-mainBg hover:text-white 已作答
 size-[44px] aspect-square rounded-lg font-POP text-[18px] font-medium leading-[46px] flex justify-center transition-all user-select relative border-black/20 text-black/60 border hover:bg-mainBg hover:text-white没有写过
 flex items-center gap-2 px-[24px] py-[8px] bg-[#0D0D0D] hover:bg-gray-800 text-white rounded-[999px] text-[18px] font-AP-55 font-normal transition-colors user-select 提交作业，一直可以点击
+您确定要提交本次答案吗
+flex items-center justify-center px-[24px] h-[44px] font-AP-55 text-[18px] text-[#0A0A0A] rounded-[999px] border border-[#0A0A0A]/10 user-select取消
+flex items-center justify-center px-[24px] h-[44px] font-AP-55 text-[18px] text-[#0A0A0A] rounded-[999px] border bg-[#0D0D0D] text-white user-select确定
+info-btn-re挑战更高分
+info-score-num分数
 question-area-content 题目
 有这个 text-green bg-green-bg/80 px-[8px] h-[27px] font-AP-55 text-[18px] rounded-[2px] shrink-0 而且innertext是单选题就是单选题 以下为单选题的情况。
 flex items-center gap-4 user-select group 选项，包含在题目底下，点击css不会变化

@@ -5,6 +5,7 @@
 // @description  DOM 探测屏状态 + 页内控制面板；支持自定义 AI API（需使用有视觉能力的模型）；任意界面可续跑，仅手动开始后执行。
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
+// @match        https://examloop.zhihuishu.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -262,6 +263,7 @@
     await walk(root);
     return blocks;
   };
+  var blocksToMarkdown = (blocks) => blocks.map((b) => b.type === "text" ? b.content : `[IMAGE:${b.index}]`).join("\n");
   var readQuestion = async () => {
     const root = document.querySelector(".questionContent");
     const blocks = await getQuestionBlocks(root);
@@ -770,10 +772,10 @@ Key: ${keyLabel}`;
       });
     }
     if (memory.length < 2) {
-      const blocksToMarkdown = (blks) => blks.map((b) => b.type === "text" ? b.content : `[IMAGE:${b.index}]`).join("\n");
+      const blocksToMarkdown2 = (blks) => blks.map((b) => b.type === "text" ? b.content : `[IMAGE:${b.index}]`).join("\n");
       const content = [{ type: "text", text: `题目：
 
-${blocksToMarkdown(blocks)}
+${blocksToMarkdown2(blocks)}
 
 选项：
 ${optLines.join("\n")}` }];
@@ -899,8 +901,9 @@ ${questionText}` }];
       if (!container) return false;
       const oldText = container.innerText;
       panelNotify("quiz", { phase: "start" });
-      const questionContent = container.innerText;
-      const images = [...container.querySelectorAll("img")].map((img) => img.src);
+      const blocks = await getQuestionBlocks(container);
+      const questionContent = blocksToMarkdown(blocks);
+      const images = blocks.filter((b) => b.type === "image").map((b) => b.src);
       const typeEl = document.querySelector(".text-green");
       const isSingle = !!(typeEl && typeEl.innerText.includes("单选"));
       let aiRaw;
