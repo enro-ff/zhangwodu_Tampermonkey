@@ -894,9 +894,13 @@ ${questionText}` }];
   };
   async function runHomeworkQuiz() {
     while (!unsafeWindow.__ZHS_STOP) {
+      await waitFor(() => !document.querySelector(".el-loading-spinner"), 15e3);
       const container = await waitFor(() => {
         const el = document.querySelector(".question-area-content");
-        return el && el.innerText.trim() ? el : null;
+        if (!el || !el.innerText.trim()) return null;
+        const opts = el.querySelectorAll(".flex.items-center.gap-4.user-select.group");
+        if (opts.length === 0) return null;
+        return opts[0].innerText.trim() ? el : null;
       }, 15e3);
       if (!container) return false;
       const oldText = container.innerText;
@@ -917,25 +921,42 @@ ${questionText}` }];
       const letters = parseAnswerLetters(aiRaw);
       const optionContainers = [...container.querySelectorAll(".flex.items-center.gap-4.user-select.group")];
       for (const letter of letters) {
-        const targetOption = optionContainers.find((opt) => {
+        let targetOption = optionContainers.find((opt) => {
           const circle = opt.querySelector(".font-AP-65");
-          return circle && circle.innerText.trim().toUpperCase() === letter;
+          if (!circle) return false;
+          const circleLetter = circle.innerText.replace(/[^A-Za-z]/g, "").toUpperCase();
+          return circleLetter === letter;
         });
+        if (!targetOption) {
+          const idx = letter.charCodeAt(0) - 65;
+          if (idx >= 0 && idx < optionContainers.length) {
+            targetOption = optionContainers[idx];
+          }
+        }
         if (targetOption) {
           click(targetOption);
           await waitFor(() => {
             const circle = targetOption.querySelector(".font-AP-65");
-            return circle && circle.classList.contains("bg-mainBg") ? true : null;
+            return circle && (circle.classList.contains("bg-mainBg") || circle.classList.contains("text-white")) ? true : null;
           }, 3e3);
         }
       }
       const nextUnansweredBtn = getHomeworkUnansweredButton();
       if (nextUnansweredBtn) {
         click(nextUnansweredBtn);
+        await sleep(10);
+        await waitFor(() => !document.querySelector(".el-loading-spinner"), 1e4);
         const changed = await waitFor(() => {
           const curContainer = document.querySelector(".question-area-content");
-          return curContainer && curContainer.innerText.trim() !== oldText ? true : null;
-        }, 5e3);
+          if (!curContainer) return null;
+          const text = curContainer.innerText.trim();
+          if (text === oldText) return null;
+          const opts = curContainer.querySelectorAll(".flex.items-center.gap-4.user-select.group");
+          if (opts.length === 0) return null;
+          const imgs = curContainer.querySelectorAll("img");
+          if ([...imgs].some((img) => !img.complete)) return null;
+          return opts[0].innerText.trim() ? true : null;
+        }, 8e3);
         if (!changed) {
           panelNotify("error", "切换下一题失败");
           return false;

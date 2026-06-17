@@ -78,9 +78,16 @@ export const answerHomeworkWithAI = async (questionText, images, isSingle) => {
 // Homework automation flow
 export async function runHomeworkQuiz() {
   while (!unsafeWindow.__ZHS_STOP) {
+    // 1. Wait for loading spinner to disappear
+    await waitFor(() => !document.querySelector('.el-loading-spinner'), 15000);
+
+    // 2. Wait for question container and options to be fully ready
     const container = await waitFor(() => {
       const el = document.querySelector('.question-area-content');
-      return el && el.innerText.trim() ? el : null;
+      if (!el || !el.innerText.trim()) return null;
+      const opts = el.querySelectorAll('.flex.items-center.gap-4.user-select.group');
+      if (opts.length === 0) return null;
+      return opts[0].innerText.trim() ? el : null;
     }, 15000);
 
     if (!container) return false;
@@ -106,16 +113,27 @@ export async function runHomeworkQuiz() {
     const letters = parseAnswerLetters(aiRaw);
     const optionContainers = [...container.querySelectorAll('.flex.items-center.gap-4.user-select.group')];
     for (const letter of letters) {
-      const targetOption = optionContainers.find(opt => {
+      // 1. Try matching by letter text inside circle (cleaning non-alphabetic characters)
+      let targetOption = optionContainers.find(opt => {
         const circle = opt.querySelector('.font-AP-65');
-        return circle && circle.innerText.trim().toUpperCase() === letter;
+        if (!circle) return false;
+        const circleLetter = circle.innerText.replace(/[^A-Za-z]/g, '').toUpperCase();
+        return circleLetter === letter;
       });
+
+      // 2. Fallback to index-based mapping if circle text match fails
+      if (!targetOption) {
+        const idx = letter.charCodeAt(0) - 65;
+        if (idx >= 0 && idx < optionContainers.length) {
+          targetOption = optionContainers[idx];
+        }
+      }
 
       if (targetOption) {
         click(targetOption);
         await waitFor(() => {
           const circle = targetOption.querySelector('.font-AP-65');
-          return circle && circle.classList.contains('bg-mainBg') ? true : null;
+          return circle && (circle.classList.contains('bg-mainBg') || circle.classList.contains('text-white')) ? true : null;
         }, 3000);
       }
     }
@@ -123,10 +141,24 @@ export async function runHomeworkQuiz() {
     const nextUnansweredBtn = getHomeworkUnansweredButton();
     if (nextUnansweredBtn) {
       click(nextUnansweredBtn);
+      // Let the browser start processing the click and mount the spinner
+      await sleep(10);
+
+      // Wait for any active loading spinner to disappear
+      await waitFor(() => !document.querySelector('.el-loading-spinner'), 10000);
+
       const changed = await waitFor(() => {
         const curContainer = document.querySelector('.question-area-content');
-        return curContainer && curContainer.innerText.trim() !== oldText ? true : null;
-      }, 5000);
+        if (!curContainer) return null;
+        const text = curContainer.innerText.trim();
+        if (text === oldText) return null;
+        // Also ensure options of the new question have rendered and contain text
+        const opts = curContainer.querySelectorAll('.flex.items-center.gap-4.user-select.group');
+        if (opts.length === 0) return null;
+        const imgs = curContainer.querySelectorAll('img');
+        if ([...imgs].some(img => !img.complete)) return null;
+        return opts[0].innerText.trim() ? true : null;
+      }, 8000);
       if (!changed) {
         panelNotify('error', '切换下一题失败');
         return false;
@@ -170,3 +202,19 @@ export async function runHomeworkFlow() {
     panelNotify('done');
   }
 }
+
+// const waitImgLoad = (img) => {
+//   return new Promise((resolve, reject) => {
+//     if(img.complete){
+//       resolve();
+//       return;
+//     }
+//     img.onload = ()=>{
+//       resolve();
+//     }
+//     img.onReject = (e) => {
+//       reject(e);
+//     }
+//   })
+// }
+
