@@ -1,6 +1,6 @@
 import { SCREENS } from './constants.js';
 import { setLoopKey, sleep } from './utils.js';
-import { waitFor, click, getQuestionBlocks, blocksToMarkdown } from './dom.js';
+import { waitFor, click, getQuestionBlocks, blocksToMarkdown, captureElement } from './dom.js';
 import { requestAI, parseAnswerLetters } from './api.js';
 import { panelNotify } from './panel.js';
 
@@ -25,7 +25,7 @@ export const getHomeworkSubmitButton = () => {
 };
 
 // AI interaction logic
-export const buildHomeworkQuizMessages = (questionText, images, attempt, chatState, isSingle = true) => {
+export const buildHomeworkQuizMessages = (input, images, attempt, chatState, isSingle = true, isScreenshot = false) => {
   const memory = chatState.memory || [];
   const answerFmt = isSingle
     ? '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）'
@@ -44,8 +44,16 @@ export const buildHomeworkQuizMessages = (questionText, images, attempt, chatSta
     });
   }
   if (memory.length < 2) {
-    const content = [{ type: 'text', text: `完整题目与选项内容如下：\n\n${questionText}` }];
-    images.forEach((src) => content.push({ type: 'image_url', image_url: { url: src } }));
+    let content;
+    if (isScreenshot) {
+      content = [
+        { type: 'text', text: `请仔细阅读截图中展示的题目与选项。逐步用平文本思考并选出正确答案的选项。${answerFmt}。` },
+        { type: 'image_url', image_url: { url: input } }
+      ];
+    } else {
+      content = [{ type: 'text', text: `完整题目与选项内容如下：\n\n${input}` }];
+      images.forEach((src) => content.push({ type: 'image_url', image_url: { url: src } }));
+    }
     memory.push({
       role: 'user',
       content
@@ -67,9 +75,9 @@ export const isValidHomeworkAnswer = (raw) => {
   return !!match;
 };
 
-export const answerHomeworkWithAI = async (questionText, images, isSingle) => {
+export const answerHomeworkWithAI = async (input, images, isSingle, isScreenshot = false) => {
   const { raw } = await requestAI(
-    (attempt, chatState) => buildHomeworkQuizMessages(questionText, images, attempt, chatState, isSingle),
+    (attempt, chatState) => buildHomeworkQuizMessages(input, images, attempt, chatState, isSingle, isScreenshot),
     (raw) => isValidHomeworkAnswer(raw)
   );
   return raw;
@@ -95,15 +103,21 @@ export async function runHomeworkQuiz() {
     const oldText = container.innerText;
     panelNotify('quiz', { phase: 'start' });
 
-    const blocks = await getQuestionBlocks(container);
-    const questionContent = blocksToMarkdown(blocks);
-    const images = blocks.filter((b) => b.type === 'image').map((b) => b.src);
     const typeEl = document.querySelector('.text-green');
     const isSingle = !!(typeEl && typeEl.innerText.includes('单选'));
 
     let aiRaw;
     try {
-      aiRaw = await answerHomeworkWithAI(questionContent, images, isSingle);
+      const engineMode = GM_getValue('zhs_engine_mode', 'traditional');
+      if (engineMode === 'screenshot') {
+        const screenshot = await captureElement(container);
+        aiRaw = await answerHomeworkWithAI(screenshot, [], isSingle, true);
+      } else {
+        const blocks = await getQuestionBlocks(container);
+        const questionContent = blocksToMarkdown(blocks);
+        const images = blocks.filter((b) => b.type === 'image').map((b) => b.src);
+        aiRaw = await answerHomeworkWithAI(questionContent, images, isSingle, false);
+      }
       panelNotify('quiz', { phase: 'done', aiOutput: aiRaw });
     } catch (e) {
       panelNotify('error', e?.message || 'AI 答题失败');

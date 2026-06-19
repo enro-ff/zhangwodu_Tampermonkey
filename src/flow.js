@@ -17,7 +17,9 @@ import {
   readQuestion,
   getMismatchNode,
   hasListWork,
-  detectScreen
+  detectScreen,
+  captureElement,
+  getScreenshotTarget
 } from './dom.js';
 import { answerWithAI } from './api.js';
 import { panelNotify } from './panel.js';
@@ -71,7 +73,16 @@ export async function runQuizHop() {
   const oldText = isReady.innerText;
   panelNotify('quiz', { phase: 'start' });
   try {
-    const aiRaw = await answerWithAI(await readQuestion());
+    const engineMode = GM_getValue('zhs_engine_mode', 'traditional');
+    let aiRaw;
+    if (engineMode === 'screenshot') {
+      const target = getScreenshotTarget(SCREENS.QUIZ);
+      if (!target) throw new Error('未找到截图目标元素');
+      const screenshot = await captureElement(target);
+      aiRaw = await answerWithAI(null, screenshot);
+    } else {
+      aiRaw = await answerWithAI(await readQuestion());
+    }
     panelNotify('quiz', { phase: 'done', aiOutput: aiRaw });
   } catch (e) {
     panelNotify('error', e?.message || 'AI 答题失败');

@@ -6,6 +6,7 @@
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
 // @match        https://examloop.zhihuishu.com/*
+// @require      https://cdn.jsdelivr.net/npm/html2canvas-pro/dist/html2canvas-pro.min.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -288,6 +289,107 @@
     }
     return null;
   };
+  var getBase64Image = (url) => {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        responseType: "blob",
+        onload: (response) => {
+          if (response.status === 200) {
+            const blob = response.response;
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              resolve(reader.result);
+            };
+            reader.readAsDataURL(blob);
+          } else {
+            reject(new Error("图片加载失败"));
+          }
+        },
+        onerror: (err) => {
+          reject(err);
+        }
+      });
+    });
+  };
+  var processCrossImg = async (originalEl) => {
+    const rect = originalEl.getBoundingClientRect();
+    const clone = originalEl.cloneNode(true);
+    clone.style.position = "fixed";
+    clone.style.left = "-99999px";
+    clone.style.top = "0";
+    clone.style.width = rect.width + "px";
+    clone.style.height = rect.height + "px";
+    clone.style.boxSizing = "border-box";
+    const computedStyle = window.getComputedStyle(originalEl);
+    clone.style.backgroundColor = computedStyle.backgroundColor || "#ffffff";
+    clone.style.color = computedStyle.color || "#333333";
+    document.body.appendChild(clone);
+    const images = clone.querySelectorAll("img");
+    const decodePromises = [];
+    const promises = Array.from(images).map(async (img) => {
+      const src = img.src;
+      if (!src || src.startsWith("data:") || src.startsWith(window.location.origin)) {
+        return;
+      }
+      try {
+        const base64 = await getBase64Image(src);
+        img.src = base64;
+        if (typeof img.decode === "function") {
+          decodePromises.push(img.decode().catch(() => {
+          }));
+        }
+      } catch (e) {
+        console.error("图片转换失败: ", src, e);
+      }
+    });
+    await Promise.all(promises);
+    await Promise.all(decodePromises);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return clone;
+  };
+  var captureElement = async (element) => {
+    if (!element) return null;
+    const cleanedElement = await processCrossImg(element);
+    const h2c = window.html2canvas || globalThis.html2canvas;
+    if (!h2c) {
+      cleanedElement.remove();
+      throw new Error("未加载 html2canvas 库！请检查脚本 @require 配置。");
+    }
+    try {
+      const canvas = await h2c(cleanedElement, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: window.getComputedStyle(element).backgroundColor || "#ffffff"
+      });
+      const imgData = canvas.toDataURL("image/png");
+      cleanedElement.remove();
+      return imgData;
+    } catch (e) {
+      cleanedElement.remove();
+      throw e;
+    }
+  };
+  var getScreenshotTarget = (screen) => {
+    if (screen === SCREENS.QUIZ) {
+      const q = document.querySelector(".questionContent");
+      if (!q) return null;
+      const mc = !!document.querySelector(".el-checkbox-group.checkbox-view");
+      const opts = mc ? document.querySelector(".el-checkbox-group.checkbox-view") : document.querySelector("ul.radio-view");
+      if (!opts) return q;
+      let parent = q.parentElement;
+      while (parent && parent !== document.body && parent !== document.documentElement) {
+        if (parent.contains(opts)) {
+          return parent;
+        }
+        parent = parent.parentElement;
+      }
+      return q;
+    } else {
+      return document.querySelector(".question-area-content");
+    }
+  };
 
   // src/panel.js
   var hopActionLabel = (screen, expectDetailForward) => {
@@ -409,6 +511,17 @@
               <div class="form-group"><label>Max Tokens</label><input id="inp-maxtokens" type="number" min="256" max="8192" placeholder="默认 2048"></div>
               <div class="form-group"><label>Timeout (ms)</label><input id="inp-timeout" type="number" min="10000" max="300000" step="10000" placeholder="默认 120000"></div>
               <div class="form-group"><label>掌握度阈值 (%)</label><input id="inp-threshold" type="number" min="0" max="100" placeholder="默认 80"></div>
+              <div class="form-group">
+                <label>题目获取引擎</label>
+                <div style="display:flex;gap:12px;margin: 4px 0 4px 0;">
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+                    <input type="radio" name="engine-mode" value="traditional" checked style="accent-color:#7fbb93;"> 传统文本+图片
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+                    <input type="radio" name="engine-mode" value="screenshot" style="accent-color:#7fbb93;"> 截图引擎 (html2canvas)
+                  </label>
+                </div>
+              </div>
             </div>
             <div class="btns" style="margin:6px 0 0 0">
               <button class="btn btn-start" id="btn-save-settings" type="button">保存配置</button>
@@ -528,6 +641,9 @@
       const savedMode = GM_getValue("zhs_run_mode", "chain");
       const radio = shadow.querySelector(`input[name="run-mode"][value="${savedMode}"]`);
       if (radio) radio.checked = true;
+      const savedEngine = GM_getValue("zhs_engine_mode", "traditional");
+      const engineRadio = shadow.querySelector(`input[name="engine-mode"][value="${savedEngine}"]`);
+      if (engineRadio) engineRadio.checked = true;
     };
     const refreshApiStatus = () => {
       const cfg = getApiCfg();
@@ -632,6 +748,12 @@ Key: ${keyLabel}`;
         addLog(`已切换运行模式：${e.target.value === "chain" ? "掌握度自适应" : "课后作业/测试"}`);
       });
     });
+    shadow.querySelectorAll('input[name="engine-mode"]').forEach((input) => {
+      input.addEventListener("change", (e) => {
+        GM_setValue("zhs_engine_mode", e.target.value);
+        addLog(`已切换题目获取引擎：${e.target.value === "screenshot" ? "截图引擎" : "传统文本+图片"}`);
+      });
+    });
     btnStart.addEventListener("click", () => handlers.onStart());
     btnStop.addEventListener("click", () => handlers.onStop());
     btnCollapse.addEventListener("click", () => setCollapsed(true));
@@ -649,6 +771,8 @@ Key: ${keyLabel}`;
       if (!Number.isNaN(threshold) && threshold >= 0 && threshold <= 100) {
         GM_setValue(THRESHOLD_KEY, threshold);
       }
+      const selectedEngine = shadow.querySelector('input[name="engine-mode"]:checked')?.value || "traditional";
+      GM_setValue("zhs_engine_mode", selectedEngine);
       settingsPanel.classList.remove("open");
       addLog("API 配置已保存");
       refreshApiStatus();
@@ -756,7 +880,7 @@ Key: ${keyLabel}`;
     }
     throw new Error(`AI 请求失败，已重试 ${AI_CHAT.maxAttempts} 次: ${chatState.lastError}`);
   };
-  var buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false) => {
+  var buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false, isScreenshot = false) => {
     const memory = chatState.memory || [];
     const answerFmt = isMultiple ? '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）' : '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）';
     if (!memory.length) {
@@ -772,14 +896,22 @@ Key: ${keyLabel}`;
       });
     }
     if (memory.length < 2) {
-      const blocksToMarkdown2 = (blks) => blks.map((b) => b.type === "text" ? b.content : `[IMAGE:${b.index}]`).join("\n");
-      const content = [{ type: "text", text: `题目：
+      let content;
+      if (isScreenshot) {
+        content = [
+          { type: "text", text: `请仔细阅读截图中展示的题目与选项。逐步用平文本思考并选出正确答案的选项。${answerFmt}。` },
+          { type: "image_url", image_url: { url: blocks } }
+        ];
+      } else {
+        const blocksToMarkdown2 = (blks) => blks.map((b) => b.type === "text" ? b.content : `[IMAGE:${b.index}]`).join("\n");
+        content = [{ type: "text", text: `题目：
 
 ${blocksToMarkdown2(blocks)}
 
 选项：
 ${optLines.join("\n")}` }];
-      blocks.filter((b) => b.type === "image").forEach((b) => content.push({ type: "image_url", image_url: { url: b.src } }));
+        blocks.filter((b) => b.type === "image").forEach((b) => content.push({ type: "image_url", image_url: { url: b.src } }));
+      }
       memory.push({
         role: "user",
         content
@@ -800,13 +932,15 @@ ${optLines.join("\n")}` }];
     const last = all[all.length - 1];
     return last ? [...last[1].toUpperCase()] : [];
   };
-  var answerWithAI = async (blocks) => {
+  var answerWithAI = async (blocks, screenshotBase64 = null) => {
     const mc = isMultipleChoice();
     const opts = getQuizOptions();
     if (!opts.length) return null;
     const optLines = opts.map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt.innerText.trim()}`);
+    const isScreenshot = !!screenshotBase64;
+    const input = isScreenshot ? screenshotBase64 : blocks;
     const { raw } = await requestAI(
-      (attempt, chatState) => buildQuizMessages(blocks, optLines, attempt, chatState, mc),
+      (attempt, chatState) => buildQuizMessages(input, optLines, attempt, chatState, mc, isScreenshot),
       (raw2) => isValidQuizAnswer(raw2, opts.length)
     );
     const letters = parseAnswerLetters(raw);
@@ -846,7 +980,7 @@ ${optLines.join("\n")}` }];
       return hasBg || hasText;
     });
   };
-  var buildHomeworkQuizMessages = (questionText, images, attempt, chatState, isSingle = true) => {
+  var buildHomeworkQuizMessages = (input, images, attempt, chatState, isSingle = true, isScreenshot = false) => {
     const memory = chatState.memory || [];
     const answerFmt = isSingle ? '最后一行必须以"答案：X"的格式输出，X 只能为单个字母（对应正确选项）' : '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）';
     if (!memory.length) {
@@ -862,10 +996,18 @@ ${optLines.join("\n")}` }];
       });
     }
     if (memory.length < 2) {
-      const content = [{ type: "text", text: `完整题目与选项内容如下：
+      let content;
+      if (isScreenshot) {
+        content = [
+          { type: "text", text: `请仔细阅读截图中展示的题目与选项。逐步用平文本思考并选出正确答案的选项。${answerFmt}。` },
+          { type: "image_url", image_url: { url: input } }
+        ];
+      } else {
+        content = [{ type: "text", text: `完整题目与选项内容如下：
 
-${questionText}` }];
-      images.forEach((src) => content.push({ type: "image_url", image_url: { url: src } }));
+${input}` }];
+        images.forEach((src) => content.push({ type: "image_url", image_url: { url: src } }));
+      }
       memory.push({
         role: "user",
         content
@@ -885,9 +1027,9 @@ ${questionText}` }];
     const match = (raw || "").match(/答案[：:]\s*([A-Z]+)/i);
     return !!match;
   };
-  var answerHomeworkWithAI = async (questionText, images, isSingle) => {
+  var answerHomeworkWithAI = async (input, images, isSingle, isScreenshot = false) => {
     const { raw } = await requestAI(
-      (attempt, chatState) => buildHomeworkQuizMessages(questionText, images, attempt, chatState, isSingle),
+      (attempt, chatState) => buildHomeworkQuizMessages(input, images, attempt, chatState, isSingle, isScreenshot),
       (raw2) => isValidHomeworkAnswer(raw2)
     );
     return raw;
@@ -905,14 +1047,20 @@ ${questionText}` }];
       if (!container) return false;
       const oldText = container.innerText;
       panelNotify("quiz", { phase: "start" });
-      const blocks = await getQuestionBlocks(container);
-      const questionContent = blocksToMarkdown(blocks);
-      const images = blocks.filter((b) => b.type === "image").map((b) => b.src);
       const typeEl = document.querySelector(".text-green");
       const isSingle = !!(typeEl && typeEl.innerText.includes("单选"));
       let aiRaw;
       try {
-        aiRaw = await answerHomeworkWithAI(questionContent, images, isSingle);
+        const engineMode = GM_getValue("zhs_engine_mode", "traditional");
+        if (engineMode === "screenshot") {
+          const screenshot = await captureElement(container);
+          aiRaw = await answerHomeworkWithAI(screenshot, [], isSingle, true);
+        } else {
+          const blocks = await getQuestionBlocks(container);
+          const questionContent = blocksToMarkdown(blocks);
+          const images = blocks.filter((b) => b.type === "image").map((b) => b.src);
+          aiRaw = await answerHomeworkWithAI(questionContent, images, isSingle, false);
+        }
         panelNotify("quiz", { phase: "done", aiOutput: aiRaw });
       } catch (e) {
         panelNotify("error", e?.message || "AI 答题失败");
@@ -1039,7 +1187,16 @@ ${questionText}` }];
     const oldText = isReady.innerText;
     panelNotify("quiz", { phase: "start" });
     try {
-      const aiRaw = await answerWithAI(await readQuestion());
+      const engineMode = GM_getValue("zhs_engine_mode", "traditional");
+      let aiRaw;
+      if (engineMode === "screenshot") {
+        const target = getScreenshotTarget(SCREENS.QUIZ);
+        if (!target) throw new Error("未找到截图目标元素");
+        const screenshot = await captureElement(target);
+        aiRaw = await answerWithAI(null, screenshot);
+      } else {
+        aiRaw = await answerWithAI(await readQuestion());
+      }
       panelNotify("quiz", { phase: "done", aiOutput: aiRaw });
     } catch (e) {
       panelNotify("error", e?.message || "AI 答题失败");

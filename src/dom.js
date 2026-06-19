@@ -179,3 +179,118 @@ export const getMismatchNode = () => {
   }
   return null;
 };
+
+export const getBase64Image = (url) => {
+  return new Promise((resolve, reject) => {
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: url,
+      responseType: 'blob',
+      onload: (response) => {
+        if (response.status === 200) {
+          const blob = response.response;
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result);
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          reject(new Error('图片加载失败'));
+        }
+      },
+      onerror: (err) => {
+        reject(err);
+      },
+    });
+  });
+};
+
+export const processCrossImg = async (originalEl) => {
+  const rect = originalEl.getBoundingClientRect();
+  const clone = originalEl.cloneNode(true);
+
+  clone.style.position = 'fixed';
+  clone.style.left = '-99999px';
+  clone.style.top = '0';
+  clone.style.width = rect.width + 'px';
+  clone.style.height = rect.height + 'px';
+  clone.style.boxSizing = 'border-box';
+
+  const computedStyle = window.getComputedStyle(originalEl);
+  clone.style.backgroundColor = computedStyle.backgroundColor || '#ffffff';
+  clone.style.color = computedStyle.color || '#333333';
+
+  document.body.appendChild(clone);
+
+  const images = clone.querySelectorAll('img');
+  const decodePromises = [];
+
+  const promises = Array.from(images).map(async (img) => {
+    const src = img.src;
+    if (!src || src.startsWith('data:') || src.startsWith(window.location.origin)) {
+      return;
+    }
+    try {
+      const base64 = await getBase64Image(src);
+      img.src = base64;
+      if (typeof img.decode === 'function') {
+        decodePromises.push(img.decode().catch(() => {}));
+      }
+    } catch (e) {
+      console.error('图片转换失败: ', src, e);
+    }
+  });
+
+  await Promise.all(promises);
+  await Promise.all(decodePromises);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  return clone;
+};
+
+export const captureElement = async (element) => {
+  if (!element) return null;
+  const cleanedElement = await processCrossImg(element);
+  const h2c = window.html2canvas || globalThis.html2canvas;
+  if (!h2c) {
+    cleanedElement.remove();
+    throw new Error('未加载 html2canvas 库！请检查脚本 @require 配置。');
+  }
+  try {
+    const canvas = await h2c(cleanedElement, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: window.getComputedStyle(element).backgroundColor || '#ffffff'
+    });
+    const imgData = canvas.toDataURL('image/png');
+    cleanedElement.remove();
+    return imgData;
+  } catch (e) {
+    cleanedElement.remove();
+    throw e;
+  }
+};
+
+export const getScreenshotTarget = (screen) => {
+  if (screen === SCREENS.QUIZ) {
+    const q = document.querySelector('.questionContent');
+    if (!q) return null;
+    const mc = !!document.querySelector('.el-checkbox-group.checkbox-view');
+    const opts = mc
+      ? document.querySelector('.el-checkbox-group.checkbox-view')
+      : document.querySelector('ul.radio-view');
+    if (!opts) return q;
+    
+    let parent = q.parentElement;
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      if (parent.contains(opts)) {
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+    return q;
+  } else {
+    return document.querySelector('.question-area-content');
+  }
+};
+

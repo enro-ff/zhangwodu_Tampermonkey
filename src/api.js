@@ -110,7 +110,7 @@ export const requestAI = async (buildMessages, validate) => {
   throw new Error(`AI 请求失败，已重试 ${AI_CHAT.maxAttempts} 次: ${chatState.lastError}`);
 };
 
-export const buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false) => {
+export const buildQuizMessages = (blocks, optLines, attempt, chatState, isMultiple = false, isScreenshot = false) => {
   const memory = chatState.memory || [];
   const answerFmt = isMultiple
     ? '最后一行必须以"答案：X"的格式输出，X 为多个连续字母（对应所有正确选项，例如"ABC"表示选A、B、C三个选项）'
@@ -129,13 +129,21 @@ export const buildQuizMessages = (blocks, optLines, attempt, chatState, isMultip
     });
   }
   if (memory.length < 2) {
-    const blocksToMarkdown = (blks) =>
-      blks.map((b) => (b.type === 'text' ? b.content : `[IMAGE:${b.index}]`)).join('\n');
-      
-    const content = [{ type: 'text', text: `题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}` }];
-    blocks
-      .filter((b) => b.type === 'image')
-      .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
+    let content;
+    if (isScreenshot) {
+      content = [
+        { type: 'text', text: `请仔细阅读截图中展示的题目与选项。逐步用平文本思考并选出正确答案的选项。${answerFmt}。` },
+        { type: 'image_url', image_url: { url: blocks } }
+      ];
+    } else {
+      const blocksToMarkdown = (blks) =>
+        blks.map((b) => (b.type === 'text' ? b.content : `[IMAGE:${b.index}]`)).join('\n');
+        
+      content = [{ type: 'text', text: `题目：\n\n${blocksToMarkdown(blocks)}\n\n选项：\n${optLines.join('\n')}` }];
+      blocks
+        .filter((b) => b.type === 'image')
+        .forEach((b) => content.push({ type: 'image_url', image_url: { url: b.src } }));
+    }
     memory.push({
       role: 'user',
       content
@@ -158,14 +166,17 @@ export const parseAnswerLetters = (raw) => {
   return last ? [...last[1].toUpperCase()] : [];
 };
 
-export const answerWithAI = async (blocks) => {
+export const answerWithAI = async (blocks, screenshotBase64 = null) => {
   const mc = isMultipleChoice();
   const opts = getQuizOptions();
   if (!opts.length) return null;
 
   const optLines = opts.map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt.innerText.trim()}`);
+  const isScreenshot = !!screenshotBase64;
+  const input = isScreenshot ? screenshotBase64 : blocks;
+
   const { raw } = await requestAI(
-    (attempt, chatState) => buildQuizMessages(blocks, optLines, attempt, chatState, mc),
+    (attempt, chatState) => buildQuizMessages(input, optLines, attempt, chatState, mc, isScreenshot),
     (raw) => isValidQuizAnswer(raw, opts.length),
   );
 

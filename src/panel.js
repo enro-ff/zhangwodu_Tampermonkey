@@ -137,6 +137,17 @@ export const createPanel = (handlers) => {
               <div class="form-group"><label>Max Tokens</label><input id="inp-maxtokens" type="number" min="256" max="8192" placeholder="默认 2048"></div>
               <div class="form-group"><label>Timeout (ms)</label><input id="inp-timeout" type="number" min="10000" max="300000" step="10000" placeholder="默认 120000"></div>
               <div class="form-group"><label>掌握度阈值 (%)</label><input id="inp-threshold" type="number" min="0" max="100" placeholder="默认 80"></div>
+              <div class="form-group">
+                <label>题目获取引擎</label>
+                <div style="display:flex;gap:12px;margin: 4px 0 4px 0;">
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+                    <input type="radio" name="engine-mode" value="traditional" checked style="accent-color:#7fbb93;"> 传统文本+图片
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#355148;font-weight:500;">
+                    <input type="radio" name="engine-mode" value="screenshot" style="accent-color:#7fbb93;"> 截图引擎 (html2canvas)
+                  </label>
+                </div>
+              </div>
             </div>
             <div class="btns" style="margin:6px 0 0 0">
               <button class="btn btn-start" id="btn-save-settings" type="button">保存配置</button>
@@ -272,6 +283,10 @@ export const createPanel = (handlers) => {
     const savedMode = GM_getValue('zhs_run_mode', 'chain');
     const radio = shadow.querySelector(`input[name="run-mode"][value="${savedMode}"]`);
     if (radio) radio.checked = true;
+
+    const savedEngine = GM_getValue('zhs_engine_mode', 'traditional');
+    const engineRadio = shadow.querySelector(`input[name="engine-mode"][value="${savedEngine}"]`);
+    if (engineRadio) engineRadio.checked = true;
   };
 
   const refreshApiStatus = () => {
@@ -386,6 +401,13 @@ export const createPanel = (handlers) => {
     });
   });
 
+  shadow.querySelectorAll('input[name="engine-mode"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      GM_setValue('zhs_engine_mode', e.target.value);
+      addLog(`已切换题目获取引擎：${e.target.value === 'screenshot' ? '截图引擎' : '传统文本+图片'}`);
+    });
+  });
+
   btnStart.addEventListener('click', () => handlers.onStart());
   btnStop.addEventListener('click', () => handlers.onStop());
   btnCollapse.addEventListener('click', () => setCollapsed(true));
@@ -405,6 +427,8 @@ export const createPanel = (handlers) => {
     if (!Number.isNaN(threshold) && threshold >= 0 && threshold <= 100) {
       GM_setValue(THRESHOLD_KEY, threshold);
     }
+    const selectedEngine = shadow.querySelector('input[name="engine-mode"]:checked')?.value || 'traditional';
+    GM_setValue('zhs_engine_mode', selectedEngine);
     settingsPanel.classList.remove('open');
     addLog('API 配置已保存');
     refreshApiStatus();

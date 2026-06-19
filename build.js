@@ -9,6 +9,7 @@ const header = `// ==UserScript==
 // @match        https://ai-smart-course-student-pro.zhihuishu.com/*
 // @match        https://studentexamcomh5.zhihuishu.com/*
 // @match        https://examloop.zhihuishu.com/*
+// @require      https://cdn.jsdelivr.net/npm/html2canvas-pro/dist/html2canvas-pro.min.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
